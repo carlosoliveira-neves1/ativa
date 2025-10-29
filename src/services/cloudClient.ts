@@ -1,4 +1,4 @@
-import type { CloudState } from "../store/useQuestionnaireStore";
+import type { ActionPlan, CloudState } from "../store/useQuestionnaireStore";
 
 const API_BASE = import.meta.env.VITE_CLOUD_API_URL ?? "http://localhost:4000";
 
@@ -29,4 +29,28 @@ export async function appendSyncEntry(entry: CloudState["syncHistory"][number]):
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(entry),
   });
+}
+
+export async function fetchActionPlans(): Promise<ActionPlan[]> {
+  const response = await fetch(`${API_BASE}/action-plans`);
+  return handleResponse<ActionPlan[]>(response);
+}
+
+export async function persistActionPlan(plan: ActionPlan): Promise<ActionPlan> {
+  const response = await fetch(`${API_BASE}/action-plans`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(plan),
+  });
+  return handleResponse<ActionPlan>(response);
+}
+
+export async function removeActionPlanApi(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/action-plans/${id}`, {
+    method: "DELETE",
+  });
+  if (!response.ok && response.status !== 404) {
+    const message = await response.text();
+    throw new Error(message || `Failed to remove plan (${response.status})`);
+  }
 }
