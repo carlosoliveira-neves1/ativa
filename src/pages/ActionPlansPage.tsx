@@ -223,7 +223,7 @@ export function ActionPlansPage() {
             </button>
           </div>
         ) : (
-          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {actionPlans.map((plan) => (
               <PlanCard
                 key={plan.id}
@@ -412,19 +412,20 @@ interface PlanModalProps {
 
 function PlanModal({ onClose, onSubmit, onChange, formState, isSaving, isEditing }: PlanModalProps) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/30 px-4 py-8 backdrop-blur">
-      <div className="w-full max-w-3xl rounded-3xl bg-white p-8 shadow-elevated">
-        <header className="mb-6 flex items-start justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold text-slate-900">{isEditing ? "Editar plano de ação" : "Novo plano de ação"}</h2>
-            <p className="text-sm text-slate-500">
-              Preencha as informações para acompanhar a correção da não conformidade.
-            </p>
-          </div>
-        </header>
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/30 backdrop-blur">
+      <div className="flex min-h-full items-center justify-center p-4">
+        <div className="w-full max-w-3xl rounded-3xl bg-white p-6 shadow-elevated sm:p-8">
+          <header className="mb-6 flex items-start justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900 sm:text-2xl">{isEditing ? "Editar plano de ação" : "Novo plano de ação"}</h2>
+              <p className="text-sm text-slate-500">
+                Preencha as informações para acompanhar a correção da não conformidade.
+              </p>
+            </div>
+          </header>
 
-        <div className="grid gap-4">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
             <InputField
               label="Título *"
               placeholder="Ex: Implementar SESMT"
@@ -437,14 +438,14 @@ function PlanModal({ onClose, onSubmit, onChange, formState, isSaving, isEditing
               value={formState.unitOrSector}
               onChange={(value) => onChange("unitOrSector", value)}
             />
-          </div>
-          <TextAreaField
-            label="Descrição do Problema *"
-            placeholder="Descreva a não conformidade identificada"
-            value={formState.problemDescription}
-            onChange={(value) => onChange("problemDescription", value)}
-          />
-          <div className="grid gap-4 md:grid-cols-2">
+            </div>
+            <TextAreaField
+              label="Descrição do Problema *"
+              placeholder="Descreva a não conformidade identificada"
+              value={formState.problemDescription}
+              onChange={(value) => onChange("problemDescription", value)}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
             <InputField
               label="Item da Norma"
               placeholder="Ex: NR-1 item 1.4.1"
@@ -457,14 +458,14 @@ function PlanModal({ onClose, onSubmit, onChange, formState, isSaving, isEditing
               value={formState.responsible}
               onChange={(value) => onChange("responsible", value)}
             />
-          </div>
-          <TextAreaField
-            label="Ação Corretiva *"
-            placeholder="Descreva a ação que será implementada"
-            value={formState.correctiveAction}
-            onChange={(value) => onChange("correctiveAction", value)}
-          />
-          <div className="grid gap-4 md:grid-cols-3">
+            </div>
+            <TextAreaField
+              label="Ação Corretiva *"
+              placeholder="Descreva a ação que será implementada"
+              value={formState.correctiveAction}
+              onChange={(value) => onChange("correctiveAction", value)}
+            />
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
             <SelectField
               label="Gravidade *"
               options={severityChoices}
@@ -483,36 +484,37 @@ function PlanModal({ onClose, onSubmit, onChange, formState, isSaving, isEditing
               value={formState.dueDate}
               onChange={(value) => onChange("dueDate", value)}
             />
+            </div>
+            <TextAreaField
+              label="Observações"
+              placeholder="Informações adicionais sobre o plano"
+              value={formState.notes}
+              onChange={(value) => onChange("notes", value)}
+            />
           </div>
-          <TextAreaField
-            label="Observações"
-            placeholder="Informações adicionais sobre o plano"
-            value={formState.notes}
-            onChange={(value) => onChange("notes", value)}
-          />
-        </div>
 
-        <footer className="mt-8 flex flex-col-reverse gap-3 md:flex-row md:justify-end">
-          <button
-            onClick={onClose}
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-600 transition hover:border-primary hover:text-primary"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={onSubmit}
-            disabled={isSaving}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-6 py-2 text-sm font-semibold text-white shadow-elevated transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Salvando...
-              </>
-            ) : (
-              "Salvar"
-            )}
-          </button>
-        </footer>
+          <footer className="mt-6 flex flex-col-reverse gap-3 sm:mt-8 sm:flex-row sm:justify-end">
+            <button
+              onClick={onClose}
+              className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:border-primary hover:text-primary"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={onSubmit}
+              disabled={isSaving}
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-primary px-6 py-2.5 text-sm font-semibold text-white shadow-elevated transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Salvando...
+                </>
+              ) : (
+                "Salvar"
+              )}
+            </button>
+          </footer>
+        </div>
       </div>
     </div>
   );
