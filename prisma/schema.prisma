@@ -11,6 +11,42 @@ datasource db {
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
+enum UserRole {
+  ADMIN_GLOBAL
+  COMPANY_ADMIN
+  USER
+}
+
+model Company {
+  id           String             @id @default(uuid())
+  code         String             @unique
+  nomeFantasia String
+  razaoSocial  String
+  cnpj         String             @unique
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  users        User[]
+  responses    QuestionResponse[]
+  syncEntries  SyncEntry[]
+  actionPlans  ActionPlan[]
+}
+
+model User {
+  id           String    @id @default(uuid())
+  name         String
+  login        String    @unique
+  email        String    @unique
+  passwordHash String
+  role         UserRole  @default(USER)
+  companyId    String?
+  company      Company?  @relation(fields: [companyId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([companyId])
+}
+
 model QuestionResponse {
   id             String   @id @default(uuid())
   sectionId      String
@@ -20,11 +56,14 @@ model QuestionResponse {
   valueNumber    Float?
   attachmentName String?
   attachmentData String?
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  @@index([companyId])
   @@index([sectionId])
-  @@unique([questionnaire, sectionId, questionId], map: "responses_question_unique")
+  @@unique([companyId, questionnaire, sectionId, questionId], map: "responses_company_question_unique")
 }
 
 model SyncEntry {
@@ -33,7 +72,11 @@ model SyncEntry {
   conformity  Float
   completion  Float
   note        String?
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
   createdAt   DateTime @default(now())
+
+  @@index([companyId])
 }
 
 model ActionPlan {
@@ -48,9 +91,12 @@ model ActionPlan {
   dueDate            DateTime?
   responsible        String
   notes              String?
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id])
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
+  @@index([companyId])
   @@index([status])
   @@index([severity])
 }

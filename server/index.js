@@ -1,7 +1,10 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
-import { PrismaClient } from "@prisma/client";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import { randomUUID } from "node:crypto";
+import { PrismaClient, UserRole } from "@prisma/client";
 
 const prisma = new PrismaClient();
 const DEFAULT_QUESTIONNAIRE = "default";
