@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ChartOptions, TooltipItem } from "chart.js";
 import { Doughnut, Bar } from "react-chartjs-2";
 import {
@@ -12,6 +12,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useScoreSnapshot } from "../hooks/useScoreSnapshot";
+import { useAuthStore } from "../store/useAuthStore";
+import { generateInsights } from "../services/authClient";
 
 const riskLabels: Record<string, { chip: string; description: string }> = {
   Baixo: {
@@ -30,6 +32,46 @@ const riskLabels: Record<string, { chip: string; description: string }> = {
 
 export function DashboardPage() {
   const snapshot = useScoreSnapshot();
+  const { user, selectedCompanyId } = useAuthStore((state) => ({
+    user: state.user,
+    selectedCompanyId: state.selectedCompanyId,
+  }));
+
+  const [focus, setFocus] = useState("");
+  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const companyId = user?.role === "ADMIN_GLOBAL" ? selectedCompanyId : user?.company?.id ?? null;
+
+  const suggestionParagraphs = useMemo(() => {
+    if (!aiSuggestion) {
+      return [];
+    }
+    return aiSuggestion
+      .split(/\n+/)
+      .map((paragraph) => paragraph.trim())
+      .filter(Boolean);
+  }, [aiSuggestion]);
+
+  const handleGenerateInsights = async () => {
+    if (!companyId) {
+      setAiError("Selecione uma empresa para gerar recomendações.");
+      return;
+    }
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const response = await generateInsights(companyId, focus ? { focus } : {});
+      setAiSuggestion(response.suggestions);
+    } catch (error) {
+      console.error("Falha ao gerar insights IA", error);
+      const message = error instanceof Error ? error.message : "Erro ao gerar recomendações";
+      setAiError(message);
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const summaryCards = useMemo(
     () => [
@@ -303,15 +345,55 @@ export function DashboardPage() {
         </div>
 
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-elevated">
-          <h2 className="text-lg font-semibold text-slate-800">Insights rápidos</h2>
-          <ul className="mt-4 space-y-3 text-sm text-slate-600">
-            {snapshot.insights.map((insight) => (
-              <li key={insight} className="flex items-start gap-2">
-                <span className="mt-1 inline-block h-2 w-2 rounded-full bg-primary" />
-                <span>{insight}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-slate-800">Insights com IA</h2>
+            <button
+              type="button"
+              onClick={handleGenerateInsights}
+              disabled={aiLoading}
+              className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:bg-primary/60"
+            >
+              {aiLoading ? "Gerando..." : "Gerar recomendações"}
+            </button>
+          </div>
+
+          {user?.role === "ADMIN_GLOBAL" && !selectedCompanyId && (
+            <p className="mt-3 rounded-xl border border-dashed border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              Selecione uma empresa no topo para pedir recomendações personalizadas.
+            </p>
+          )}
+
+          <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Foco opcional
+            <textarea
+              value={focus}
+              onChange={(event) => setFocus(event.target.value)}
+              placeholder="Descreva pontos de atenção ou metas para orientar a IA"
+              className="mt-2 w-full resize-none rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 outline-none transition focus:border-primary focus:ring focus:ring-primary/20"
+              rows={3}
+            />
+          </label>
+
+          {aiError && (
+            <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+              {aiError}
+            </p>
+          )}
+
+          <div className="mt-4 space-y-3 text-sm text-slate-600">
+            {aiSuggestion ? (
+              suggestionParagraphs.map((paragraph, index) => (
+                <p key={`${paragraph}-${index}`} className="rounded-2xl bg-slate-50 px-3 py-2">
+                  {paragraph}
+                </p>
+              ))
+            ) : (
+              <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-xs text-slate-500">
+                Solicite recomendações para receber um resumo priorizado com base nos planos de ação,
+                histórico de sincronizações e taxa de conformidade.
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </section>
