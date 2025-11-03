@@ -1,7 +1,8 @@
 const huggingFaceKey = process.env.HUGGINGFACE_API_KEY;
 const huggingFaceModel = process.env.HUGGINGFACE_MODEL ?? "meta-llama/Meta-Llama-3-8B-Instruct";
 const huggingFaceEndpoint =
-  process.env.HUGGINGFACE_ENDPOINT ?? `https://api-inference.huggingface.co/models/${huggingFaceModel}`;
+  process.env.HUGGINGFACE_ENDPOINT ??
+  `https://router.huggingface.co/hf-inference/models/${huggingFaceModel}`;
 const huggingFaceMaxTokens = Number(process.env.HUGGINGFACE_MAX_NEW_TOKENS ?? 600);
 
 export function isAiConfigured() {
@@ -106,8 +107,8 @@ export async function generateCompanyInsights({ company, metrics, focus, actor, 
 
   const payload = await response.json();
   const suggestion = Array.isArray(payload)
-    ? payload[0]?.generated_text ?? payload[0]?.text ?? ""
-    : payload.generated_text ?? payload.text ?? "";
+    ? payload[0]?.generated_text ?? payload[0]?.text ?? payload[0]?.content ?? ""
+    : payload.generated_text ?? payload.text ?? payload.content ?? "";
 
   const trimmed = String(suggestion ?? "").trim();
   if (!trimmed) {
