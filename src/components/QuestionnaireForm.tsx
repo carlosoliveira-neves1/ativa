@@ -9,12 +9,39 @@ import {
 import type { Questionnaire, Question } from "../config/questionnaire";
 import { useQuestionnaireStore } from "../store/useQuestionnaireStore";
 import { Paperclip, UploadCloud } from "lucide-react";
+import { persistCloudState } from "../services/cloudClient";
 
 interface QuestionnaireFormProps {
   questionnaire: Questionnaire;
 }
 
 export function QuestionnaireForm({ questionnaire }: QuestionnaireFormProps) {
+  const { responses, syncHistory, actionPlans } = useQuestionnaireStore((state) => ({
+    responses: state.responses,
+    syncHistory: state.syncHistory,
+    actionPlans: state.actionPlans,
+  }));
+
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const handleManualSave = async () => {
+    setSaveStatus("saving");
+    setSaveError(null);
+    try {
+      await persistCloudState({ responses, syncHistory, actionPlans });
+      setSaveStatus("success");
+      setTimeout(() => {
+        setSaveStatus("idle");
+      }, 2500);
+    } catch (error) {
+      console.error("Falha ao salvar questionário", error);
+      const message = error instanceof Error ? error.message : "Erro ao salvar dados";
+      setSaveError(message);
+      setSaveStatus("error");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <header className="space-y-2 rounded-3xl border border-primary/10 bg-white p-8 shadow-elevated">
@@ -29,6 +56,26 @@ export function QuestionnaireForm({ questionnaire }: QuestionnaireFormProps) {
           do protótipo simula um monitoramento vivo, pensado para ciclos curtos
           de auditoria e visibilidade contínua da conformidade.
         </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleManualSave}
+            disabled={saveStatus === "saving"}
+            className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:bg-primary/60"
+          >
+            {saveStatus === "saving" ? "Salvando..." : "Salvar agora"}
+          </button>
+          {saveStatus === "success" && (
+            <span className="text-xs font-semibold uppercase tracking-wide text-emerald-600">
+              Dados sincronizados com a nuvem.
+            </span>
+          )}
+          {saveStatus === "error" && (
+            <span className="text-xs font-semibold uppercase tracking-wide text-red-600">
+              Falha ao salvar: {saveError}
+            </span>
+          )}
+        </div>
       </header>
 
       {questionnaire.sections.map((section) => (
