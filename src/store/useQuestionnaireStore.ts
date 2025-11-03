@@ -144,3 +144,21 @@ export const useQuestionnaireStore = create<QuestionnaireState>((set) => ({
       actionPlans: state.actionPlans.filter((plan) => plan.id !== id),
     })),
 }));
+
+export function resetQuestionnaireState() {
+  useQuestionnaireStore.setState({
+    responses: {},
+    syncHistory: [],
+    actionPlans: [],
+    isHydrated: false,
+    updateResponse: useQuestionnaireStore.getState().updateResponse,
+    clearResponse: useQuestionnaireStore.getState().clearResponse,
+    clearSection: useQuestionnaireStore.getState().clearSection,
+    registerSync: useQuestionnaireStore.getState().registerSync,
+    resetAll: useQuestionnaireStore.getState().resetAll,
+    hydrate: useQuestionnaireStore.getState().hydrate,
+    setActionPlans: useQuestionnaireStore.getState().setActionPlans,
+    upsertActionPlan: useQuestionnaireStore.getState().upsertActionPlan,
+    removeActionPlan: useQuestionnaireStore.getState().removeActionPlan,
+  });
+}
