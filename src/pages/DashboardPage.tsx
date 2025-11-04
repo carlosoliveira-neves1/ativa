@@ -547,7 +547,6 @@ export function DashboardPage() {
               </p>
             </div>
           )}
-        </div>
       </div>
     </section>
   );
