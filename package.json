@@ -9,7 +9,7 @@
     "server": "node server/index.js",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "postinstall": "prisma generate && prisma db push --accept-data-loss"
+    "render:setup": "prisma generate && prisma db push --accept-data-loss"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",
