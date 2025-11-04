@@ -2,7 +2,7 @@ const huggingFaceKey = process.env.HUGGINGFACE_API_KEY;
 const huggingFaceModel = process.env.HUGGINGFACE_MODEL ?? "mistralai/Mistral-7B-Instruct-v0.2";
 const huggingFaceEndpoint =
   process.env.HUGGINGFACE_ENDPOINT ??
-  `https://api-inference.huggingface.co/models/${huggingFaceModel}`;
+  `https://router.huggingface.co/hf-inference/models/${huggingFaceModel}`;
 const huggingFaceMaxTokens = Number(process.env.HUGGINGFACE_MAX_NEW_TOKENS ?? 600);
 
 export function isAiConfigured() {
