@@ -289,7 +289,14 @@ export function AppLayout() {
                   />
                   <select
                     value={selectedCompanyId ?? ""}
-                    onChange={(event) => setSelectedCompanyId(event.target.value || null)}
+                    onChange={(event) => {
+                      const newCompanyId = event.target.value || null;
+                      setSelectedCompanyId(newCompanyId);
+                      // Sincronizar automaticamente ao trocar de empresa
+                      if (newCompanyId) {
+                        handleSync();
+                      }
+                    }}
                     className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:border-primary"
                   >
                     <option value="">Global</option>

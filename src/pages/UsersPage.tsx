@@ -44,14 +44,17 @@ export function UsersPage() {
 
   const loadUsers = async () => {
     try {
-      const response = await fetch("/api/users", {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || ""}/users`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${token}`,
         },
       });
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
+      } else {
+        console.error("Erro ao carregar usuários:", response.status);
       }
     } catch (error) {
       console.error("Erro ao carregar usuários:", error);
@@ -62,14 +65,17 @@ export function UsersPage() {
 
   const loadCompanies = async () => {
     try {
-      const response = await fetch("/api/companies", {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || ""}/companies`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${token}`,
         },
       });
       if (response.ok) {
         const data = await response.json();
-        setCompanies(data);
+        setCompanies(data.companies || data);
+      } else {
+        console.error("Erro ao carregar empresas:", response.status);
       }
     } catch (error) {
       console.error("Erro ao carregar empresas:", error);
@@ -79,11 +85,12 @@ export function UsersPage() {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch("/api/auth/register", {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || ""}/auth/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(formData),
       });
@@ -113,10 +120,11 @@ export function UsersPage() {
     if (!confirm("Tem certeza que deseja deletar este usuário?")) return;
 
     try {
-      const response = await fetch(`/api/users/${userId}`, {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${import.meta.env.VITE_API_URL || ""}/users/${userId}`, {
         method: "DELETE",
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${token}`,
         },
       });
 
