@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
 import { PrismaClient, UserRole, Prisma } from "@prisma/client";
 import { generateCompanyInsights, isAiConfigured } from "./services/aiSuggestions.js";
+import { sendWelcomeEmail, isEmailConfigured } from "./services/emailService.js";
 
 const prisma = new PrismaClient();
 const DEFAULT_QUESTIONNAIRE = "default";
@@ -590,10 +591,6 @@ app.post("/auth/signup", async (req, res) => {
       where: { cnpj: cnpj.replace(/\D/g, '') },
     });
 
-    if (existingCompany) {
-      return res.status(409).json({ message: "CNPJ já cadastrado" });
-    }
-
     // Verificar se login ou email já existem
     const existingUser = await prisma.user.findFirst({
       where: {
@@ -608,59 +605,100 @@ app.post("/auth/signup", async (req, res) => {
       return res.status(409).json({ message: "Login ou e-mail já cadastrado" });
     }
 
-    // Gerar código da empresa
-    const companyCode = generateCompanyCode(cnpj);
-
-    // Verificar se o código gerado já existe (improvável, mas possível)
-    const codeExists = await prisma.company.findUnique({
-      where: { code: companyCode },
-    });
-
-    if (codeExists) {
-      return res.status(409).json({ message: "Código da empresa já existe. Entre em contato com o suporte." });
-    }
+    let company;
+    let user;
+    let isNewCompany = false;
 
     // Hash da senha
     const passwordHash = await hashPassword(password);
 
-    // Criar empresa e usuário em uma transação
-    const result = await prisma.$transaction(async (tx) => {
-      const company = await tx.company.create({
-        data: {
-          code: companyCode,
-          cnpj: cnpj.replace(/\D/g, ''),
-          nomeFantasia: nomeFantasia || `Empresa ${companyCode}`,
-          razaoSocial: razaoSocial || nomeFantasia || `Empresa ${companyCode}`,
-        },
-      });
-
-      const user = await tx.user.create({
+    if (existingCompany) {
+      // Empresa já existe, apenas criar usuário
+      company = existingCompany;
+      user = await prisma.user.create({
         data: {
           name: nomeFantasia || login,
           login: normalizedLogin,
           email,
           passwordHash,
-          role: UserRole.COMPANY_ADMIN,
+          role: UserRole.USER, // Novos usuários em empresa existente são USER
           companyId: company.id,
         },
       });
+    } else {
+      // Criar nova empresa e usuário
+      isNewCompany = true;
+      const companyCode = generateCompanyCode(cnpj);
 
-      return { company, user };
-    });
+      // Verificar se o código gerado já existe (improvável, mas possível)
+      const codeExists = await prisma.company.findUnique({
+        where: { code: companyCode },
+      });
+
+      if (codeExists) {
+        return res.status(409).json({ message: "Código da empresa já existe. Entre em contato com o suporte." });
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const newCompany = await tx.company.create({
+          data: {
+            code: companyCode,
+            cnpj: cnpj.replace(/\D/g, ''),
+            nomeFantasia: nomeFantasia || `Empresa ${companyCode}`,
+            razaoSocial: razaoSocial || nomeFantasia || `Empresa ${companyCode}`,
+          },
+        });
+
+        const newUser = await tx.user.create({
+          data: {
+            name: nomeFantasia || login,
+            login: normalizedLogin,
+            email,
+            passwordHash,
+            role: UserRole.COMPANY_ADMIN, // Primeiro usuário é admin
+            companyId: newCompany.id,
+          },
+        });
+
+        return { company: newCompany, user: newUser };
+      });
+
+      company = result.company;
+      user = result.user;
+    }
+
+    // Enviar email de boas-vindas
+    if (isEmailConfigured()) {
+      try {
+        await sendWelcomeEmail({
+          to: email,
+          name: user.name,
+          login: user.login,
+          companyCode: company.code,
+          companyName: company.nomeFantasia,
+          isNewCompany,
+        });
+      } catch (emailError) {
+        console.error("Erro ao enviar email de boas-vindas:", emailError);
+        // Não falhar o cadastro se o email falhar
+      }
+    }
 
     // Gerar token
     const token = signToken({
-      id: result.user.id,
-      role: result.user.role,
-      companyId: result.company.id,
+      id: user.id,
+      role: user.role,
+      companyId: company.id,
     });
 
     res.status(201).json({
       token,
       expiresIn: JWT_EXPIRES_IN,
-      user: buildUserPayload(result.user, result.company),
-      companyCode: result.company.code,
-      message: `Cadastro realizado com sucesso! Seu código de empresa é: ${result.company.code}`,
+      user: buildUserPayload(user, company),
+      companyCode: company.code,
+      message: isNewCompany
+        ? `Cadastro realizado com sucesso! Seu código de empresa é: ${company.code}. Um email foi enviado com suas credenciais.`
+        : `Usuário adicionado à empresa ${company.nomeFantasia} com sucesso! Um email foi enviado com suas credenciais.`,
     });
   } catch (error) {
     console.error("Failed to signup", error);
