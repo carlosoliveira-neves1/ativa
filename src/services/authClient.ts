@@ -16,6 +16,15 @@ export interface LoginPayload {
   password: string;
 }
 
+export interface SignupPayload {
+  cnpj: string;
+  email: string;
+  login: string;
+  password: string;
+  nomeFantasia?: string;
+  razaoSocial?: string;
+}
+
 export interface CompanySummary {
   id: string;
   code: string;
@@ -39,6 +48,11 @@ export interface LoginResponse {
   user: AuthUser;
 }
 
+export interface SignupResponse extends LoginResponse {
+  companyCode: string;
+  message: string;
+}
+
 export async function login(payload: LoginPayload): Promise<LoginResponse> {
   const response = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
@@ -46,6 +60,15 @@ export async function login(payload: LoginPayload): Promise<LoginResponse> {
     body: JSON.stringify(payload),
   });
   return parseResponse<LoginResponse>(response);
+}
+
+export async function signup(payload: SignupPayload): Promise<SignupResponse> {
+  const response = await fetch(`${API_BASE}/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseResponse<SignupResponse>(response);
 }
 
 export interface ProfileResponse {

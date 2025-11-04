@@ -101,6 +101,24 @@ async function verifyPassword(candidate, hashed) {
   return bcrypt.compare(candidate, hashed);
 }
 
+function generateCompanyCode(cnpj) {
+  // Remove caracteres não numéricos do CNPJ
+  const digits = cnpj.replace(/\D/g, '');
+  // Pega os últimos 4 dígitos do CNPJ
+  const suffix = digits.slice(-4);
+  return `ATV-${suffix}`;
+}
+
+function validateCNPJ(cnpj) {
+  const cleaned = cnpj.replace(/\D/g, '');
+  return cleaned.length === 14;
+}
+
+function validateEmail(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
 async function authenticate(req, res, next) {
   const authorization = req.headers.authorization;
   if (!authorization || !authorization.startsWith(AUTH_HEADER_PREFIX)) {
@@ -544,6 +562,111 @@ app.post(
     }
   }
 );
+
+app.post("/auth/signup", async (req, res) => {
+  const { cnpj, email, login, password, nomeFantasia, razaoSocial } = req.body ?? {};
+
+  // Validações
+  if (!cnpj || !validateCNPJ(cnpj)) {
+    return res.status(400).json({ message: "CNPJ inválido" });
+  }
+
+  if (!email || !validateEmail(email)) {
+    return res.status(400).json({ message: "E-mail inválido" });
+  }
+
+  const normalizedLogin = normalizeLogin(login);
+  if (!normalizedLogin) {
+    return res.status(400).json({ message: "Login inválido" });
+  }
+
+  if (!isValidPassword(password)) {
+    return res.status(400).json({ message: `Senha deve ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres` });
+  }
+
+  try {
+    // Verificar se CNPJ já existe
+    const existingCompany = await prisma.company.findUnique({
+      where: { cnpj: cnpj.replace(/\D/g, '') },
+    });
+
+    if (existingCompany) {
+      return res.status(409).json({ message: "CNPJ já cadastrado" });
+    }
+
+    // Verificar se login ou email já existem
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { login: normalizedLogin },
+          { email },
+        ],
+      },
+    });
+
+    if (existingUser) {
+      return res.status(409).json({ message: "Login ou e-mail já cadastrado" });
+    }
+
+    // Gerar código da empresa
+    const companyCode = generateCompanyCode(cnpj);
+
+    // Verificar se o código gerado já existe (improvável, mas possível)
+    const codeExists = await prisma.company.findUnique({
+      where: { code: companyCode },
+    });
+
+    if (codeExists) {
+      return res.status(409).json({ message: "Código da empresa já existe. Entre em contato com o suporte." });
+    }
+
+    // Hash da senha
+    const passwordHash = await hashPassword(password);
+
+    // Criar empresa e usuário em uma transação
+    const result = await prisma.$transaction(async (tx) => {
+      const company = await tx.company.create({
+        data: {
+          code: companyCode,
+          cnpj: cnpj.replace(/\D/g, ''),
+          nomeFantasia: nomeFantasia || `Empresa ${companyCode}`,
+          razaoSocial: razaoSocial || nomeFantasia || `Empresa ${companyCode}`,
+        },
+      });
+
+      const user = await tx.user.create({
+        data: {
+          name: nomeFantasia || login,
+          login: normalizedLogin,
+          email,
+          passwordHash,
+          role: UserRole.COMPANY_ADMIN,
+          companyId: company.id,
+        },
+      });
+
+      return { company, user };
+    });
+
+    // Gerar token
+    const token = signToken({
+      id: result.user.id,
+      role: result.user.role,
+      companyId: result.company.id,
+    });
+
+    res.status(201).json({
+      token,
+      expiresIn: JWT_EXPIRES_IN,
+      user: buildUserPayload(result.user, result.company),
+      companyCode: result.company.code,
+      message: `Cadastro realizado com sucesso! Seu código de empresa é: ${result.company.code}`,
+    });
+  } catch (error) {
+    console.error("Failed to signup", error);
+    res.status(500).json({ message: "Erro ao realizar cadastro" });
+  }
+});
 
 app.post("/auth/login", async (req, res) => {
   const { companyCode, login, password } = req.body ?? {};

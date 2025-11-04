@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { login, type LoginPayload } from "../services/authClient";
 import { fetchCloudState } from "../services/cloudClient";
 import { useAuthStore } from "../store/useAuthStore";
@@ -179,6 +179,26 @@ export function LoginPage() {
             </div>
           )}
         </form>
+
+        <div className="space-y-3">
+          <div className="text-center">
+            <Link
+              to="/forgot-password"
+              className="text-sm text-primary hover:underline"
+            >
+              Esqueci minha senha
+            </Link>
+          </div>
+
+          <div className="border-t border-slate-200 pt-4 text-center">
+            <p className="text-sm text-slate-600">
+              Não tem uma conta?{" "}
+              <Link to="/signup" className="font-semibold text-primary hover:underline">
+                Cadastre-se
+              </Link>
+            </p>
+          </div>
+        </div>
 
         {token && selectedCompanyId && status === "authenticated" && (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
