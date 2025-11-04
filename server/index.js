@@ -1039,6 +1039,31 @@ app.post("/auth/register", authenticate, async (req, res) => {
   }
 });
 
+// Listar todas as empresas (Admin Global apenas)
+app.get("/companies", authenticate, async (req, res) => {
+  if (req.user.role !== "ADMIN_GLOBAL") {
+    return res.status(403).json({ message: "Acesso negado" });
+  }
+
+  try {
+    const companies = await prisma.company.findMany({
+      select: {
+        id: true,
+        code: true,
+        nomeFantasia: true,
+        razaoSocial: true,
+        cnpj: true,
+      },
+      orderBy: { nomeFantasia: "asc" },
+    });
+
+    res.json({ companies });
+  } catch (error) {
+    console.error("Failed to list companies", error);
+    res.status(500).json({ message: "Erro ao listar empresas" });
+  }
+});
+
 // Listar todos os usuários (Admin Global apenas)
 app.get("/users", authenticate, async (req, res) => {
   if (req.user.role !== "ADMIN_GLOBAL") {

@@ -17,9 +17,10 @@ interface User {
 
 interface Company {
   id: string;
-  name: string;
+  code: string;
+  nomeFantasia: string;
+  razaoSocial: string;
   cnpj: string;
-  accessCode: string;
 }
 
 export function UsersPage() {
@@ -305,7 +306,7 @@ export function UsersPage() {
                     <option value="">Selecione uma empresa</option>
                     {companies.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name} - {c.cnpj}
+                        {c.nomeFantasia} - {c.cnpj}
                       </option>
                     ))}
                   </select>
