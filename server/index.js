@@ -1174,8 +1174,35 @@ app.post("/auth/emergency-reset", async (req, res) => {
 app.get(
   "/state",
   authenticate,
-  withCompany(async (_req, res, companyId) => {
+  async (req, res) => {
     try {
+      // Admin Global sem empresa selecionada retorna dados vazios
+      if (req.user.role === "ADMIN_GLOBAL" && !req.query.companyId && !req.query.companyCode) {
+        return res.json({ responses: {}, syncHistory: [], actionPlans: [] });
+      }
+
+      // Obter companyId
+      let companyId;
+      if (req.user.role === "ADMIN_GLOBAL") {
+        if (req.query.companyId) {
+          companyId = req.query.companyId;
+        } else if (req.query.companyCode) {
+          const company = await prisma.company.findUnique({
+            where: { code: req.query.companyCode },
+          });
+          if (!company) {
+            return res.status(404).json({ message: "Empresa não encontrada" });
+          }
+          companyId = company.id;
+        }
+      } else {
+        companyId = req.user.companyId;
+      }
+
+      if (!companyId) {
+        return res.status(400).json({ message: "Informe companyId ou companyCode para acessar dados de uma empresa" });
+      }
+
       const [responseRows, syncRows, planRows] = await Promise.all([
         prisma.questionResponse.findMany({
           where: { questionnaire: DEFAULT_QUESTIONNAIRE, companyId },
@@ -1223,7 +1250,7 @@ app.get(
       console.error("Failed to fetch state", error);
       res.status(500).json({ message: "Failed to fetch state" });
     }
-  })
+  }
 );
 
 // GET endpoint para buscar o último insight
