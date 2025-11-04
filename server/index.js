@@ -11,9 +11,10 @@ import { sendWelcomeEmail, sendPasswordResetEmail, isEmailConfigured } from "./s
 const prisma = new PrismaClient({
   datasources: {
     db: {
-      url: process.env.DATABASE_URL + '?connection_limit=5&pool_timeout=10',
+      url: process.env.DATABASE_URL + '?connection_limit=3&pool_timeout=20',
     },
   },
+  log: ['error', 'warn'],
 });
 const DEFAULT_QUESTIONNAIRE = "default";
 const MAX_SYNC_HISTORY = 50;
