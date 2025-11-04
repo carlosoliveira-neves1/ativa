@@ -350,44 +350,77 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-elevated lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-800">Histórico de sincronizações</h2>
-            <TrendingUp className="h-5 w-5 text-primary" />
-          </div>
-          <div className="mt-4 space-y-3">
-            {snapshot.syncHistory.length === 0 ? (
-              <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-                Nenhuma sincronização registrada ainda. Utilize o botão "Registrar sincronização" para
-                acompanhar a evolução do diagnóstico.
-              </p>
-            ) : (
-              snapshot.syncHistory.map((entry) => (
-                <div key={entry.timestamp} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">
-                      {new Date(entry.timestamp).toLocaleString("pt-BR")}
-                    </p>
-                    <p className="text-xs text-slate-500">{entry.note ?? "Atualização manual"}</p>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 font-semibold text-primary">
-                      <TrendingUp className="h-4 w-4" />
-                      {entry.conformity}%
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-3 py-1 font-semibold text-accent">
-                      <LineChart className="h-4 w-4" />
-                      {entry.completion}%
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-elevated">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-primary/10 p-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Histórico de sincronizações</h2>
+              <p className="text-xs text-slate-500">Evolução dos indicadores de conformidade</p>
+            </div>
           </div>
         </div>
+        
+        <div className="mt-6">
+          {snapshot.syncHistory.length === 0 ? (
+            <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-8 text-center">
+              <LineChart className="mx-auto h-12 w-12 text-slate-300" />
+              <p className="mt-3 text-sm font-medium text-slate-500">
+                Nenhuma sincronização registrada ainda
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                Utilize o botão "Registrar sincronização" para acompanhar a evolução do diagnóstico
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {snapshot.syncHistory.map((entry) => (
+                <div key={entry.timestamp} className="rounded-xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4 shadow-sm transition hover:shadow-md">
+                  <div className="mb-3 flex items-start justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">
+                        {new Date(entry.timestamp).toLocaleDateString("pt-BR")}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {new Date(entry.timestamp).toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <Activity className="h-4 w-4 text-slate-400" />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between rounded-lg bg-primary/5 px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-primary" />
+                        <span className="text-xs font-medium text-slate-600">Conformidade</span>
+                      </div>
+                      <span className="text-sm font-bold text-primary">{entry.conformity}%</span>
+                    </div>
+                    
+                    <div className="flex items-center justify-between rounded-lg bg-accent/5 px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <BarChart2 className="h-4 w-4 text-accent" />
+                        <span className="text-xs font-medium text-slate-600">Andamento</span>
+                      </div>
+                      <span className="text-sm font-bold text-accent">{entry.completion}%</span>
+                    </div>
+                  </div>
+                  
+                  {entry.note && (
+                    <p className="mt-3 text-xs italic text-slate-500 line-clamp-2">
+                      {entry.note}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-elevated">
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-elevated">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-slate-800">Insights com IA</h2>
             <button
