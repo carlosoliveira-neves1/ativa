@@ -8,7 +8,13 @@ import { PrismaClient, UserRole, Prisma } from "@prisma/client";
 import { generateCompanyInsights, isAiConfigured } from "./services/aiSuggestions.js";
 import { sendWelcomeEmail, sendPasswordResetEmail, isEmailConfigured } from "./services/emailService.js";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL + '?connection_limit=5&pool_timeout=10',
+    },
+  },
+});
 const DEFAULT_QUESTIONNAIRE = "default";
 const MAX_SYNC_HISTORY = 50;
 const PASSWORD_SALT_ROUNDS = Number(process.env.AUTH_SALT_ROUNDS ?? 10);
