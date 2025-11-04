@@ -45,6 +45,14 @@ export function DashboardPage() {
 
   const companyId = user?.role === "ADMIN_GLOBAL" ? selectedCompanyId : user?.company?.id ?? null;
 
+  // Limpar insights quando mudar de empresa
+  useEffect(() => {
+    setAiSuggestion(null);
+    setInsightCreatedAt(null);
+    setAiError(null);
+    setFocus("");
+  }, [companyId]);
+
   // Carregar insights automaticamente
   useEffect(() => {
     const loadInsights = async () => {
