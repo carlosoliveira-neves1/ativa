@@ -55,6 +55,13 @@ export function LoginPage() {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    
+    // Validar campos obrigatórios
+    if (!form.login || !form.password) {
+      setError("Por favor, preencha login e senha.");
+      return;
+    }
+    
     setIsSubmitting(true);
     setStatus("loading");
     setError(null);
@@ -74,7 +81,21 @@ export function LoginPage() {
       navigate(from, { replace: true });
     } catch (err) {
       console.error("Login falhou", err);
-      const message = err instanceof Error ? err.message : "Não foi possível autenticar.";
+      let message = "Não foi possível autenticar.";
+      
+      if (err instanceof Error) {
+        // Melhorar mensagens de erro específicas
+        if (err.message.includes("401") || err.message.includes("Unauthorized")) {
+          message = "Login ou senha incorretos. Verifique suas credenciais.";
+        } else if (err.message.includes("404") || err.message.includes("não encontrad")) {
+          message = "Código da empresa não encontrado. Verifique o código ATV-XXXX.";
+        } else if (err.message.includes("400")) {
+          message = "Dados inválidos. Verifique as informações e tente novamente.";
+        } else {
+          message = err.message;
+        }
+      }
+      
       setError(message);
       clearSession();
       resetQuestionnaireState();

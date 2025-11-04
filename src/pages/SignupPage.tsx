@@ -46,6 +46,26 @@ export function SignupPage() {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    
+    // Validar campos obrigatórios
+    if (!form.cnpj || !form.nomeFantasia || !form.razaoSocial || !form.login || !form.email || !form.password) {
+      setLocalError("Por favor, preencha todos os campos obrigatórios.");
+      return;
+    }
+    
+    // Validar CNPJ (deve ter 14 dígitos)
+    const cnpjDigits = form.cnpj.replace(/\D/g, "");
+    if (cnpjDigits.length !== 14) {
+      setLocalError("CNPJ inválido. Deve conter 14 dígitos.");
+      return;
+    }
+    
+    // Validar senha (mínimo 6 caracteres)
+    if (form.password.length < 6) {
+      setLocalError("A senha deve ter no mínimo 6 caracteres.");
+      return;
+    }
+    
     setIsSubmitting(true);
     setStatus("loading");
     setLocalError(null);
@@ -63,7 +83,21 @@ export function SignupPage() {
       }, 3000);
     } catch (err) {
       console.error("Cadastro falhou", err);
-      const message = err instanceof Error ? err.message : "Não foi possível realizar o cadastro.";
+      let message = "Não foi possível realizar o cadastro.";
+      
+      if (err instanceof Error) {
+        // Melhorar mensagens de erro específicas
+        if (err.message.includes("já existe") || err.message.includes("already exists")) {
+          message = "Este CNPJ ou email já está cadastrado no sistema.";
+        } else if (err.message.includes("400")) {
+          message = "Dados inválidos. Verifique as informações e tente novamente.";
+        } else if (err.message.includes("email")) {
+          message = "Email inválido. Verifique o formato do email.";
+        } else {
+          message = err.message;
+        }
+      }
+      
       setLocalError(message);
       setError(message);
       clearSession();
