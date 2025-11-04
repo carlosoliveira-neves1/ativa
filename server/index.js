@@ -26,9 +26,15 @@ if (!process.env.JWT_SECRET) {
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? "12h";
 const AUTH_HEADER_PREFIX = "Bearer ";
 
-function signToken({ id, role, companyId }) {
+function signToken({ id, role, companyId, name, email }) {
   return jwt.sign(
-    { sub: id, role, companyId: companyId ?? null },
+    { 
+      sub: id, 
+      role, 
+      companyId: companyId ?? null,
+      name,
+      email
+    },
     JWT_SECRET,
     { expiresIn: JWT_EXPIRES_IN }
   );
@@ -130,34 +136,24 @@ async function authenticate(req, res, next) {
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     
-    // Buscar usuário completo do banco
-    const user = await prisma.user.findUnique({
-      where: { id: payload.sub },
-      include: { company: true },
-    });
-    
-    if (!user) {
-      return res.status(401).json({ message: "Usuário não encontrado" });
-    }
-    
     req.auth = {
       userId: payload.sub,
       role: payload.role,
       companyId: payload.companyId ?? null,
     };
     
+    // Criar req.user a partir do payload do token (sem query ao banco)
     req.user = {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      companyId: user.companyId,
-      company: user.company,
+      id: payload.sub,
+      name: payload.name,
+      email: payload.email,
+      role: payload.role,
+      companyId: payload.companyId ?? null,
     };
     
     return next();
   } catch (error) {
-    console.warn("Token inválido", error);
+    console.error("Token validation failed:", error.message);
     return res.status(401).json({ message: "Token inválido" });
   }
 }
@@ -710,6 +706,8 @@ app.post("/auth/signup", async (req, res) => {
       id: user.id,
       role: user.role,
       companyId: company.id,
+      name: user.name,
+      email: user.email,
     });
 
     res.status(201).json({
@@ -783,6 +781,8 @@ app.post("/auth/login", async (req, res) => {
         user.role === UserRole.ADMIN_GLOBAL
           ? company?.id ?? null
           : user.companyId,
+      name: user.name,
+      email: user.email,
     });
 
     res.json({
