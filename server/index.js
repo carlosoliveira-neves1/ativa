@@ -129,11 +129,32 @@ async function authenticate(req, res, next) {
   const token = authorization.slice(AUTH_HEADER_PREFIX.length);
   try {
     const payload = jwt.verify(token, JWT_SECRET);
+    
+    // Buscar usuário completo do banco
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      include: { company: true },
+    });
+    
+    if (!user) {
+      return res.status(401).json({ message: "Usuário não encontrado" });
+    }
+    
     req.auth = {
       userId: payload.sub,
       role: payload.role,
       companyId: payload.companyId ?? null,
     };
+    
+    req.user = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      companyId: user.companyId,
+      company: user.company,
+    };
+    
     return next();
   } catch (error) {
     console.warn("Token inválido", error);
@@ -1176,6 +1197,12 @@ app.get(
   authenticate,
   async (req, res) => {
     try {
+      // Verificar se req.user existe
+      if (!req.user) {
+        console.error("req.user is undefined - authentication failed");
+        return res.status(401).json({ message: "Não autenticado" });
+      }
+
       // Admin Global sem empresa selecionada retorna dados vazios
       if (req.user.role === "ADMIN_GLOBAL" && !req.query.companyId && !req.query.companyCode) {
         return res.json({ responses: {}, syncHistory: [], actionPlans: [] });
