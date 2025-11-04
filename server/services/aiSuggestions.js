@@ -1,12 +1,22 @@
-const huggingFaceKey = process.env.HUGGINGFACE_API_KEY;
-const huggingFaceModel = process.env.HUGGINGFACE_MODEL ?? "mistralai/Mistral-7B-Instruct-v0.2";
-const huggingFaceEndpoint =
+// Configuração de IA - Suporta Groq ou Hugging Face
+const AI_PROVIDER = process.env.AI_PROVIDER ?? "groq"; // "groq" ou "huggingface"
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL = process.env.GROQ_MODEL ?? "llama-3.1-70b-versatile";
+const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+
+const HUGGINGFACE_API_KEY = process.env.HUGGINGFACE_API_KEY;
+const HUGGINGFACE_MODEL = process.env.HUGGINGFACE_MODEL ?? "mistralai/Mistral-7B-Instruct-v0.2";
+const HUGGINGFACE_ENDPOINT =
   process.env.HUGGINGFACE_ENDPOINT ??
-  `https://router.huggingface.co/hf-inference/models/${huggingFaceModel}`;
-const huggingFaceMaxTokens = Number(process.env.HUGGINGFACE_MAX_NEW_TOKENS ?? 600);
+  `https://router.huggingface.co/hf-inference/models/${HUGGINGFACE_MODEL}`;
+
+const MAX_TOKENS = Number(process.env.AI_MAX_TOKENS ?? 600);
 
 export function isAiConfigured() {
-  return Boolean(huggingFaceKey);
+  if (AI_PROVIDER === "groq") {
+    return Boolean(GROQ_API_KEY);
+  }
+  return Boolean(HUGGINGFACE_API_KEY);
 }
 
 function formatActionPlanStats(stats = []) {
@@ -26,7 +36,11 @@ function formatRecentItems(items = [], formatter) {
 }
 
 export async function generateCompanyInsights({ company, metrics, focus, actor, limit }) {
-  if (!huggingFaceKey) {
+  // Verificar configuração
+  if (AI_PROVIDER === "groq" && !GROQ_API_KEY) {
+    throw new Error("GROQ_API_KEY não configurada");
+  }
+  if (AI_PROVIDER === "huggingface" && !HUGGINGFACE_API_KEY) {
     throw new Error("HUGGINGFACE_API_KEY não configurada");
   }
 
@@ -83,36 +97,80 @@ export async function generateCompanyInsights({ company, metrics, focus, actor, 
     `${instruction}\n${actorText}\n${focusText}\n` +
     `Gere até ${cappedLimit} recomendações.\n\nDados disponíveis:\n${lines.join("\n")}`;
 
-  const response = await fetch(huggingFaceEndpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${huggingFaceKey}`,
-    },
-    body: JSON.stringify({
-      inputs: prompt,
-      parameters: {
-        max_new_tokens: huggingFaceMaxTokens,
+  let response;
+  
+  if (AI_PROVIDER === "groq") {
+    // Usar Groq (OpenAI-compatible)
+    response = await fetch(GROQ_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          {
+            role: "system",
+            content: instruction,
+          },
+          {
+            role: "user",
+            content: `${actorText}\n${focusText}\nGere até ${cappedLimit} recomendações.\n\nDados disponíveis:\n${lines.join("\n")}`,
+          },
+        ],
+        max_tokens: MAX_TOKENS,
         temperature: 0.4,
         top_p: 0.9,
-        return_full_text: false,
+      }),
+    });
+
+    if (!response.ok) {
+      const details = await response.text();
+      throw new Error(`Groq falhou (${response.status}): ${details}`);
+    }
+
+    const payload = await response.json();
+    const suggestion = payload.choices?.[0]?.message?.content ?? "";
+    
+    const trimmed = String(suggestion ?? "").trim();
+    if (!trimmed) {
+      throw new Error("Resposta vazia do provedor de IA");
+    }
+    return trimmed;
+  } else {
+    // Usar Hugging Face
+    response = await fetch(HUGGINGFACE_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${HUGGINGFACE_API_KEY}`,
       },
-    }),
-  });
+      body: JSON.stringify({
+        inputs: prompt,
+        parameters: {
+          max_new_tokens: MAX_TOKENS,
+          temperature: 0.4,
+          top_p: 0.9,
+          return_full_text: false,
+        },
+      }),
+    });
 
-  if (!response.ok) {
-    const details = await response.text();
-    throw new Error(`Hugging Face falhou (${response.status}): ${details}`);
+    if (!response.ok) {
+      const details = await response.text();
+      throw new Error(`Hugging Face falhou (${response.status}): ${details}`);
+    }
+
+    const payload = await response.json();
+    const suggestion = Array.isArray(payload)
+      ? payload[0]?.generated_text ?? payload[0]?.text ?? payload[0]?.content ?? ""
+      : payload.generated_text ?? payload.text ?? payload.content ?? "";
+
+    const trimmed = String(suggestion ?? "").trim();
+    if (!trimmed) {
+      throw new Error("Resposta vazia do provedor de IA");
+    }
+    return trimmed;
   }
-
-  const payload = await response.json();
-  const suggestion = Array.isArray(payload)
-    ? payload[0]?.generated_text ?? payload[0]?.text ?? payload[0]?.content ?? ""
-    : payload.generated_text ?? payload.text ?? payload.content ?? "";
-
-  const trimmed = String(suggestion ?? "").trim();
-  if (!trimmed) {
-    throw new Error("Resposta vazia do provedor de IA");
-  }
-  return trimmed;
 }
