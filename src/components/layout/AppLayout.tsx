@@ -9,6 +9,8 @@ import {
   Menu,
   RefreshCw,
   ShieldPlus,
+  Users,
+  User,
   X,
 } from "lucide-react";
 import { useQuestionnaireStore } from "../../store/useQuestionnaireStore";
@@ -22,6 +24,8 @@ const navigation = [
   { label: "Questionários", to: "/questionarios", icon: ClipboardCheck },
   { label: "Relatórios", to: "/relatorios", icon: FileBarChart },
   { label: "Planos de Ação", to: "/planos", icon: ShieldPlus },
+  { label: "Usuários", to: "/usuarios", icon: Users, adminOnly: true },
+  { label: "Perfil", to: "/perfil", icon: User },
 ];
 
 export function AppLayout() {
@@ -123,6 +127,7 @@ export function AppLayout() {
 
           <nav className="space-y-1">
             {navigation.map((item) => {
+              if (item.adminOnly && user?.role !== "ADMIN_GLOBAL") return null;
               const Icon = item.icon;
               return (
                 <NavLink
@@ -200,6 +205,7 @@ export function AppLayout() {
 
           <nav className="space-y-1">
             {navigation.map((item) => {
+              if (item.adminOnly && user?.role !== "ADMIN_GLOBAL") return null;
               const Icon = item.icon;
               return (
                 <NavLink

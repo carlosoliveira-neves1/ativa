@@ -4,6 +4,8 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { QuestionnairesPage } from "./pages/QuestionnairesPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { ActionPlansPage } from "./pages/ActionPlansPage";
+import { UsersPage } from "./pages/UsersPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
@@ -25,6 +27,8 @@ function App() {
             <Route path="/questionarios" element={<QuestionnairesPage />} />
             <Route path="/relatorios" element={<ReportsPage />} />
             <Route path="/planos" element={<ActionPlansPage />} />
+            <Route path="/usuarios" element={<UsersPage />} />
+            <Route path="/perfil" element={<ProfilePage />} />
           </Route>
         </Route>
       </Routes>
