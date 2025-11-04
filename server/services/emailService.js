@@ -1,7 +1,8 @@
 import nodemailer from "nodemailer";
 
-const SMTP_HOST = process.env.SMTP_HOST || "smtp.locaweb.com.br";
-const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
+// Configurações SMTP - Locaweb SMTP dedicado
+const SMTP_HOST = process.env.SMTP_HOST || "smtplw.com.br";
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_USER = process.env.SMTP_USER || "cadastro@infratechnologia.com.br";
 const SMTP_PASS = process.env.SMTP_PASS || "Mudar@1234";
 const SMTP_FROM = process.env.SMTP_FROM || "NR-1 Compliance <cadastro@infratechnologia.com.br>";
@@ -11,20 +12,32 @@ let transporter = null;
 function getTransporter() {
   if (!transporter) {
     const port = SMTP_PORT;
+    const isSecure = port === 465;
+    
+    console.log("Configurando transporter SMTP:", {
+      host: SMTP_HOST,
+      port: port,
+      secure: isSecure,
+      user: SMTP_USER,
+    });
+
     transporter = nodemailer.createTransport({
       host: SMTP_HOST,
       port: port,
-      secure: port === 465, // true para 465, false para outras portas
+      secure: isSecure, // true para 465 (SSL), false para 587 (TLS)
       auth: {
         user: SMTP_USER,
         pass: SMTP_PASS,
       },
       tls: {
         rejectUnauthorized: false,
+        minVersion: 'TLSv1.2',
       },
-      connectionTimeout: 10000, // 10 segundos
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
+      connectionTimeout: 30000, // 30 segundos
+      greetingTimeout: 30000,
+      socketTimeout: 30000,
+      logger: false, // Desabilitar logs detalhados em produção
+      debug: false, // Desabilitar debug em produção
     });
   }
   return transporter;
