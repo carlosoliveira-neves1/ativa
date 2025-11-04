@@ -73,10 +73,27 @@ export function DashboardPage() {
     if (!aiSuggestion) {
       return [];
     }
-    return aiSuggestion
-      .split(/\n+/)
-      .map((paragraph) => paragraph.trim())
-      .filter(Boolean);
+    
+    // Processar o texto para melhor formatação
+    const lines = aiSuggestion.split('\n').map(line => line.trim()).filter(Boolean);
+    const formatted: Array<{ type: 'title' | 'text' | 'list'; content: string }> = [];
+    
+    lines.forEach(line => {
+      // Detectar títulos (linhas com ###, ** ou que terminam com :)
+      if (line.startsWith('###') || line.startsWith('##') || line.startsWith('#')) {
+        formatted.push({ type: 'title', content: line.replace(/^#+\s*/, '') });
+      }
+      // Detectar itens de lista (começam com número, -, *, •, ou **)
+      else if (/^(\d+[\.\)]\s|\-\s|\*\s|•\s|\*\*)/.test(line)) {
+        formatted.push({ type: 'list', content: line.replace(/^\*\*/, '').replace(/\*\*$/, '') });
+      }
+      // Texto normal
+      else {
+        formatted.push({ type: 'text', content: line });
+      }
+    });
+    
+    return formatted;
   }, [aiSuggestion]);
 
   const handleGenerateInsights = async () => {
@@ -406,17 +423,33 @@ export function DashboardPage() {
             </p>
           )}
 
-          <div className="mt-4 space-y-3 text-sm text-slate-600">
+          <div className="mt-4 space-y-2 text-sm text-slate-600">
             {aiSuggestion ? (
-              suggestionParagraphs.map((paragraph, index) => (
-                <p key={`${paragraph}-${index}`} className="rounded-2xl bg-slate-50 px-3 py-2">
-                  {paragraph}
-                </p>
-              ))
+              suggestionParagraphs.map((item, index) => {
+                if (item.type === 'title') {
+                  return (
+                    <h3 key={index} className="mt-4 text-base font-semibold text-slate-800 first:mt-0">
+                      {item.content}
+                    </h3>
+                  );
+                }
+                if (item.type === 'list') {
+                  return (
+                    <div key={index} className="flex gap-2 rounded-xl bg-slate-50 px-3 py-2">
+                      <span className="text-primary">•</span>
+                      <p className="flex-1">{item.content}</p>
+                    </div>
+                  );
+                }
+                return (
+                  <p key={index} className="rounded-xl bg-slate-50 px-3 py-2.5 leading-relaxed">
+                    {item.content}
+                  </p>
+                );
+              })
             ) : (
-              <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-xs text-slate-500">
-                Solicite recomendações para receber um resumo priorizado com base nos planos de ação,
-                histórico de sincronizações e taxa de conformidade.
+              <p className="text-xs italic text-slate-400">
+                Nenhuma recomendação gerada ainda. Clique no botão acima.
               </p>
             )}
           </div>
