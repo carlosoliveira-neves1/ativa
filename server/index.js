@@ -902,6 +902,200 @@ app.post("/auth/reset-password", async (req, res) => {
   }
 });
 
+// Alterar senha (usuário logado)
+app.post("/auth/change-password", authenticate, async (req, res) => {
+  const { currentPassword, newPassword } = req.body ?? {};
+  const userId = req.user.id;
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: "Senha atual e nova senha são obrigatórias" });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ message: "A nova senha deve ter no mínimo 6 caracteres" });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    // Verificar senha atual
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: "Senha atual incorreta" });
+    }
+
+    // Gerar hash da nova senha
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+
+    // Atualizar senha
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: newPasswordHash },
+    });
+
+    res.json({ message: "Senha alterada com sucesso!" });
+  } catch (error) {
+    console.error("Failed to change password", error);
+    res.status(500).json({ message: "Erro ao alterar senha" });
+  }
+});
+
+// Criar usuário (Admin Global ou via signup)
+app.post("/auth/register", authenticate, async (req, res) => {
+  // Apenas Admin Global pode criar usuários por este endpoint
+  if (req.user.role !== "ADMIN_GLOBAL") {
+    return res.status(403).json({ message: "Acesso negado" });
+  }
+
+  const { name, email, password, role, companyId } = req.body ?? {};
+
+  // Validações
+  if (!name || !email || !password) {
+    return res.status(400).json({ message: "Nome, email e senha são obrigatórios" });
+  }
+
+  if (!validateEmail(email)) {
+    return res.status(400).json({ message: "Email inválido" });
+  }
+
+  if (!isValidPassword(password)) {
+    return res.status(400).json({ message: `Senha deve ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres` });
+  }
+
+  if (role === "ADMIN_COMPANY" && !companyId) {
+    return res.status(400).json({ message: "CompanyId é obrigatório para Admin de Empresa" });
+  }
+
+  try {
+    // Verificar se email já existe
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser) {
+      return res.status(409).json({ message: "Email já cadastrado" });
+    }
+
+    // Gerar login a partir do email
+    const login = email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    // Hash da senha
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    // Criar usuário
+    const user = await prisma.user.create({
+      data: {
+        name,
+        login,
+        email,
+        passwordHash,
+        role: role || "ADMIN_COMPANY",
+        companyId: role === "ADMIN_GLOBAL" ? null : companyId,
+      },
+      include: {
+        company: true,
+      },
+    });
+
+    // Enviar email com credenciais
+    if (isEmailConfigured()) {
+      try {
+        await sendWelcomeEmail({
+          to: email,
+          name: user.name,
+          login: user.login,
+          companyCode: user.company?.code || "N/A",
+          companyName: user.company?.nomeFantasia || "Admin Global",
+          isNewCompany: false,
+        });
+      } catch (emailError) {
+        console.error("Erro ao enviar email:", emailError);
+      }
+    }
+
+    res.status(201).json({
+      message: "Usuário criado com sucesso!",
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        company: user.company ? {
+          id: user.company.id,
+          nomeFantasia: user.company.nomeFantasia,
+          cnpj: user.company.cnpj,
+        } : null,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to create user", error);
+    res.status(500).json({ message: "Erro ao criar usuário" });
+  }
+});
+
+// Listar todos os usuários (Admin Global apenas)
+app.get("/users", authenticate, async (req, res) => {
+  if (req.user.role !== "ADMIN_GLOBAL") {
+    return res.status(403).json({ message: "Acesso negado" });
+  }
+
+  try {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        createdAt: true,
+        company: {
+          select: {
+            id: true,
+            nomeFantasia: true,
+            cnpj: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.json(users);
+  } catch (error) {
+    console.error("Failed to list users", error);
+    res.status(500).json({ message: "Erro ao listar usuários" });
+  }
+});
+
+// Deletar usuário (Admin Global apenas)
+app.delete("/users/:id", authenticate, async (req, res) => {
+  if (req.user.role !== "ADMIN_GLOBAL") {
+    return res.status(403).json({ message: "Acesso negado" });
+  }
+
+  const { id } = req.params;
+
+  // Não permitir deletar a si mesmo
+  if (id === req.user.id) {
+    return res.status(400).json({ message: "Você não pode deletar sua própria conta" });
+  }
+
+  try {
+    await prisma.user.delete({
+      where: { id },
+    });
+
+    res.json({ message: "Usuário deletado com sucesso" });
+  } catch (error) {
+    console.error("Failed to delete user", error);
+    res.status(500).json({ message: "Erro ao deletar usuário" });
+  }
+});
+
 app.get(
   "/state",
   authenticate,
