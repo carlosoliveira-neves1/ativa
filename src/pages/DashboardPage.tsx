@@ -423,36 +423,97 @@ export function DashboardPage() {
             </p>
           )}
 
-          <div className="mt-4 space-y-2 text-sm text-slate-600">
-            {aiSuggestion ? (
-              suggestionParagraphs.map((item, index) => {
-                if (item.type === 'title') {
-                  return (
-                    <h3 key={index} className="mt-4 text-base font-semibold text-slate-800 first:mt-0">
-                      {item.content}
-                    </h3>
-                  );
-                }
-                if (item.type === 'list') {
-                  return (
-                    <div key={index} className="flex gap-2 rounded-xl bg-slate-50 px-3 py-2">
-                      <span className="text-primary">•</span>
-                      <p className="flex-1">{item.content}</p>
-                    </div>
-                  );
-                }
-                return (
-                  <p key={index} className="rounded-xl bg-slate-50 px-3 py-2.5 leading-relaxed">
-                    {item.content}
+          {aiSuggestion ? (
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6">
+              <div className="mb-4 flex items-start gap-3">
+                <div className="rounded-lg bg-primary/10 p-2">
+                  <Target className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-base font-semibold text-slate-800">
+                    Análise de Conformidade NR-1
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Recomendações geradas pela IA com base nos dados da empresa
                   </p>
-                );
-              })
-            ) : (
-              <p className="text-xs italic text-slate-400">
-                Nenhuma recomendação gerada ainda. Clique no botão acima.
+                  {insightCreatedAt && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      Gerado em {new Date(insightCreatedAt).toLocaleString("pt-BR")}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {suggestionParagraphs.map((item, index) => {
+                  if (item.type === 'title') {
+                    // Detectar tipo de seção por palavras-chave
+                    const isImmediate = /imediata|urgente|crítico|alta prioridade/i.test(item.content);
+                    const isMedium = /médio prazo|ajuste|melhoria/i.test(item.content);
+                    const isStrategic = /estratégic|longo prazo|iniciativa/i.test(item.content);
+                    
+                    let icon = <CheckCircle2 className="h-5 w-5" />;
+                    let bgColor = "bg-slate-100";
+                    let textColor = "text-slate-700";
+                    
+                    if (isImmediate) {
+                      icon = <AlertTriangle className="h-5 w-5" />;
+                      bgColor = "bg-red-50 border-l-4 border-red-500";
+                      textColor = "text-red-800";
+                    } else if (isMedium) {
+                      icon = <Activity className="h-5 w-5" />;
+                      bgColor = "bg-amber-50 border-l-4 border-amber-500";
+                      textColor = "text-amber-800";
+                    } else if (isStrategic) {
+                      icon = <TrendingUp className="h-5 w-5" />;
+                      bgColor = "bg-blue-50 border-l-4 border-blue-500";
+                      textColor = "text-blue-800";
+                    }
+                    
+                    return (
+                      <div key={index} className={`rounded-xl ${bgColor} p-4`}>
+                        <div className="flex items-center gap-2">
+                          <div className={textColor}>{icon}</div>
+                          <h4 className={`font-semibold ${textColor}`}>
+                            {item.content}
+                          </h4>
+                        </div>
+                      </div>
+                    );
+                  }
+                  
+                  if (item.type === 'list') {
+                    return (
+                      <div key={index} className="ml-4 flex gap-3 rounded-lg bg-white p-3 shadow-sm">
+                        <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                          <span className="text-xs font-bold text-primary">•</span>
+                        </div>
+                        <p className="flex-1 text-sm leading-relaxed text-slate-700">
+                          {item.content}
+                        </p>
+                      </div>
+                    );
+                  }
+                  
+                  return (
+                    <p key={index} className="rounded-lg bg-white p-4 text-sm leading-relaxed text-slate-600 shadow-sm">
+                      {item.content}
+                    </p>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-6 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-8 text-center">
+              <Target className="mx-auto h-12 w-12 text-slate-300" />
+              <p className="mt-3 text-sm font-medium text-slate-500">
+                Nenhuma recomendação gerada ainda
               </p>
-            )}
-          </div>
+              <p className="mt-1 text-xs text-slate-400">
+                Clique no botão "Gerar recomendações" para obter insights personalizados
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </section>
