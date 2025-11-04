@@ -34,18 +34,33 @@ model Company {
 }
 
 model User {
-  id           String    @id @default(uuid())
-  name         String
-  login        String    @unique
-  email        String    @unique
-  passwordHash String
-  role         UserRole  @default(USER)
-  companyId    String?
-  company      Company?  @relation(fields: [companyId], references: [id])
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id             String          @id @default(uuid())
+  name           String
+  login          String          @unique
+  email          String          @unique
+  passwordHash   String
+  role           UserRole        @default(USER)
+  companyId      String?
+  company        Company?        @relation(fields: [companyId], references: [id])
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  passwordResets PasswordReset[]
 
   @@index([companyId])
+}
+
+model PasswordReset {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
 }
 
 model QuestionResponse {

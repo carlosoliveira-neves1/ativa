@@ -225,6 +225,139 @@ Este é um e-mail automático. Por favor, não responda.
   }
 }
 
+export async function sendPasswordResetEmail({ to, name, resetToken }) {
+  const resetUrl = `https://ativa-nr1.vercel.app/reset-password?token=${resetToken}`;
+  const subject = "Recuperação de Senha - NR-1 Compliance";
+
+  const html = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recuperação de Senha</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f4; padding: 20px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 40px 30px; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600;">NR-1 Compliance</h1>
+              <p style="margin: 10px 0 0 0; color: #e0e7ff; font-size: 14px; letter-spacing: 2px;">ATIVA</p>
+            </td>
+          </tr>
+          
+          <tr>
+            <td style="padding: 40px 30px;">
+              <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 24px; font-weight: 600;">
+                Recuperação de Senha
+              </h2>
+              
+              <p style="margin: 0 0 20px 0; color: #475569; font-size: 16px; line-height: 1.6;">
+                Olá <strong>${name}</strong>,
+              </p>
+              
+              <p style="margin: 0 0 20px 0; color: #475569; font-size: 16px; line-height: 1.6;">
+                Recebemos uma solicitação para redefinir a senha da sua conta. Se você não fez essa solicitação, ignore este e-mail.
+              </p>
+              
+              <p style="margin: 0 0 30px 0; color: #475569; font-size: 16px; line-height: 1.6;">
+                Para criar uma nova senha, clique no botão abaixo:
+              </p>
+              
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin: 30px 0;">
+                <tr>
+                  <td align="center">
+                    <a href="${resetUrl}" style="display: inline-block; background-color: #1e40af; color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-size: 16px; font-weight: 600;">
+                      Redefinir Senha
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              
+              <p style="margin: 30px 0 20px 0; color: #64748b; font-size: 14px; line-height: 1.6;">
+                Ou copie e cole este link no seu navegador:
+              </p>
+              
+              <p style="margin: 0 0 30px 0; padding: 15px; background-color: #f1f5f9; border-radius: 8px; word-break: break-all; font-size: 13px; color: #475569;">
+                ${resetUrl}
+              </p>
+              
+              <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px; margin: 30px 0;">
+                <tr>
+                  <td style="padding: 15px;">
+                    <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;">
+                      <strong>⚠️ Importante:</strong> Este link expira em <strong>1 hora</strong>. Se expirar, solicite uma nova recuperação de senha.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+              
+              <p style="margin: 30px 0 0 0; color: #64748b; font-size: 14px; line-height: 1.6;">
+                Se você tiver dúvidas ou não solicitou esta recuperação, entre em contato conosco através do e-mail 
+                <a href="mailto:cadastro@infratechnologia.com.br" style="color: #1e40af; text-decoration: none;">cadastro@infratechnologia.com.br</a>
+              </p>
+            </td>
+          </tr>
+          
+          <tr>
+            <td style="background-color: #f8fafc; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+              <p style="margin: 0 0 10px 0; color: #64748b; font-size: 13px;">
+                © ${new Date().getFullYear()} NR-1 Compliance - Ativa. Todos os direitos reservados.
+              </p>
+              <p style="margin: 0; color: #94a3b8; font-size: 12px;">
+                Este é um e-mail automático. Por favor, não responda.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+
+  const text = `
+NR-1 Compliance - Ativa
+
+Recuperação de Senha
+
+Olá ${name},
+
+Recebemos uma solicitação para redefinir a senha da sua conta. Se você não fez essa solicitação, ignore este e-mail.
+
+Para criar uma nova senha, acesse o link abaixo:
+${resetUrl}
+
+IMPORTANTE: Este link expira em 1 hora. Se expirar, solicite uma nova recuperação de senha.
+
+Se você tiver dúvidas ou não solicitou esta recuperação, entre em contato conosco através do e-mail cadastro@infratechnologia.com.br
+
+---
+© ${new Date().getFullYear()} NR-1 Compliance - Ativa. Todos os direitos reservados.
+Este é um e-mail automático. Por favor, não responda.
+  `;
+
+  try {
+    const info = await getTransporter().sendMail({
+      from: SMTP_FROM,
+      to,
+      subject,
+      text,
+      html,
+    });
+
+    console.log("Email de recuperação enviado com sucesso:", info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error("Erro ao enviar email de recuperação:", error);
+    throw new Error(`Falha ao enviar email: ${error.message}`);
+  }
+}
+
 export function isEmailConfigured() {
   return Boolean(SMTP_USER && SMTP_PASS);
 }

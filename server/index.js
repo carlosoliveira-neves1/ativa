@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
 import { PrismaClient, UserRole, Prisma } from "@prisma/client";
 import { generateCompanyInsights, isAiConfigured } from "./services/aiSuggestions.js";
-import { sendWelcomeEmail, isEmailConfigured } from "./services/emailService.js";
+import { sendWelcomeEmail, sendPasswordResetEmail, isEmailConfigured } from "./services/emailService.js";
 
 const prisma = new PrismaClient();
 const DEFAULT_QUESTIONNAIRE = "default";
@@ -789,6 +789,116 @@ app.get("/auth/profile", authenticate, async (req, res) => {
   } catch (error) {
     console.error("Failed to load profile", error);
     res.status(500).json({ message: "Erro ao carregar perfil" });
+  }
+});
+
+// Solicitar recuperação de senha
+app.post("/auth/forgot-password", async (req, res) => {
+  const { email } = req.body ?? {};
+
+  if (!email || !validateEmail(email)) {
+    return res.status(400).json({ message: "E-mail inválido" });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    // Por segurança, sempre retornar sucesso mesmo se o email não existir
+    if (!user) {
+      return res.json({ message: "Se o e-mail existir, você receberá instruções para redefinir sua senha." });
+    }
+
+    // Gerar token único
+    const token = randomUUID();
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
+
+    // Salvar token no banco
+    await prisma.passwordReset.create({
+      data: {
+        userId: user.id,
+        token,
+        expiresAt,
+      },
+    });
+
+    // Enviar email
+    if (isEmailConfigured()) {
+      try {
+        await sendPasswordResetEmail({
+          to: user.email,
+          name: user.name,
+          resetToken: token,
+        });
+      } catch (emailError) {
+        console.error("Erro ao enviar email de recuperação:", emailError);
+        return res.status(500).json({ message: "Erro ao enviar e-mail de recuperação" });
+      }
+    } else {
+      console.warn("Email não configurado, não foi possível enviar recuperação");
+      return res.status(503).json({ message: "Serviço de e-mail não configurado" });
+    }
+
+    res.json({ message: "Se o e-mail existir, você receberá instruções para redefinir sua senha." });
+  } catch (error) {
+    console.error("Failed to request password reset", error);
+    res.status(500).json({ message: "Erro ao solicitar recuperação de senha" });
+  }
+});
+
+// Redefinir senha com token
+app.post("/auth/reset-password", async (req, res) => {
+  const { token, newPassword } = req.body ?? {};
+
+  if (!token) {
+    return res.status(400).json({ message: "Token inválido" });
+  }
+
+  if (!isValidPassword(newPassword)) {
+    return res.status(400).json({ message: `Senha deve ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres` });
+  }
+
+  try {
+    // Buscar token
+    const passwordReset = await prisma.passwordReset.findUnique({
+      where: { token },
+      include: { user: true },
+    });
+
+    if (!passwordReset) {
+      return res.status(400).json({ message: "Token inválido ou expirado" });
+    }
+
+    // Verificar se já foi usado
+    if (passwordReset.used) {
+      return res.status(400).json({ message: "Este link já foi utilizado" });
+    }
+
+    // Verificar se expirou
+    if (passwordReset.expiresAt < new Date()) {
+      return res.status(400).json({ message: "Este link expirou. Solicite uma nova recuperação de senha." });
+    }
+
+    // Hash da nova senha
+    const passwordHash = await hashPassword(newPassword);
+
+    // Atualizar senha e marcar token como usado
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: passwordReset.userId },
+        data: { passwordHash },
+      }),
+      prisma.passwordReset.update({
+        where: { id: passwordReset.id },
+        data: { used: true },
+      }),
+    ]);
+
+    res.json({ message: "Senha redefinida com sucesso!" });
+  } catch (error) {
+    console.error("Failed to reset password", error);
+    res.status(500).json({ message: "Erro ao redefinir senha" });
   }
 });
 
