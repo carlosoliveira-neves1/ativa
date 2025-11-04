@@ -1247,8 +1247,14 @@ app.get(
 
       res.json({ responses, syncHistory, actionPlans });
     } catch (error) {
-      console.error("Failed to fetch state", error);
-      res.status(500).json({ message: "Failed to fetch state" });
+      console.error("Failed to fetch state - Error details:", error);
+      console.error("User:", req.user);
+      console.error("Query:", req.query);
+      res.status(500).json({ 
+        message: "Failed to fetch state",
+        error: error.message,
+        details: process.env.NODE_ENV === "development" ? error.stack : undefined
+      });
     }
   }
 );
