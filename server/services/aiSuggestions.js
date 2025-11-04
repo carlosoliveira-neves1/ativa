@@ -1,7 +1,7 @@
 // Configuração de IA - Suporta Groq ou Hugging Face
 const AI_PROVIDER = process.env.AI_PROVIDER ?? "groq"; // "groq" ou "huggingface"
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = process.env.GROQ_MODEL ?? "llama-3.1-70b-versatile";
+const GROQ_MODEL = process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile";
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 
 const HUGGINGFACE_API_KEY = process.env.HUGGINGFACE_API_KEY;
