@@ -10,7 +10,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "render:setup": "prisma generate && prisma db push --accept-data-loss",
-    "test:email": "node server/test-email.js"
+    "test:email": "node server/test-email.js",
+    "delete:user": "node server/delete-user.js"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",
