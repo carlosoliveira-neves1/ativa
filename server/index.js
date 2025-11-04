@@ -1096,6 +1096,56 @@ app.delete("/users/:id", authenticate, async (req, res) => {
   }
 });
 
+// Endpoint temporário para resetar senha do admin (REMOVER DEPOIS)
+app.post("/auth/emergency-reset", async (req, res) => {
+  const { email, newPassword, secretKey } = req.body ?? {};
+
+  // Chave secreta para segurança (use uma variável de ambiente em produção)
+  const EMERGENCY_SECRET = process.env.EMERGENCY_SECRET || "ativa-emergency-2024";
+
+  if (secretKey !== EMERGENCY_SECRET) {
+    return res.status(403).json({ message: "Chave secreta inválida" });
+  }
+
+  if (!email || !newPassword) {
+    return res.status(400).json({ message: "Email e nova senha são obrigatórios" });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ message: "Senha deve ter no mínimo 6 caracteres" });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+
+    res.json({
+      message: "Senha resetada com sucesso!",
+      user: {
+        name: user.name,
+        email: user.email,
+        login: user.login,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to reset password", error);
+    res.status(500).json({ message: "Erro ao resetar senha" });
+  }
+});
+
 app.get(
   "/state",
   authenticate,
