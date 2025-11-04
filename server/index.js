@@ -686,6 +686,41 @@ app.get(
   })
 );
 
+// GET endpoint para buscar o último insight
+app.get(
+  "/companies/:companyId/insights",
+  authenticate,
+  requireRoles(UserRole.ADMIN_GLOBAL, UserRole.COMPANY_ADMIN, UserRole.USER),
+  async (req, res) => {
+    const targetCompanyId = String(req.params.companyId);
+
+    if (req.auth.role !== UserRole.ADMIN_GLOBAL && req.auth.companyId !== targetCompanyId) {
+      return res.status(403).json({ message: "Sem permissão para acessar insights de outra empresa" });
+    }
+
+    try {
+      const latestInsight = await prisma.companyInsight.findFirst({
+        where: { companyId: targetCompanyId },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!latestInsight) {
+        return res.json({ suggestions: null, createdAt: null });
+      }
+
+      res.json({
+        suggestions: latestInsight.suggestions,
+        createdAt: latestInsight.createdAt,
+        focus: latestInsight.focus,
+      });
+    } catch (error) {
+      console.error("Failed to fetch insights", error);
+      res.status(500).json({ message: "Erro ao buscar insights" });
+    }
+  }
+);
+
+// POST endpoint para gerar novos insights
 app.post(
   "/companies/:companyId/insights",
   authenticate,
@@ -716,6 +751,16 @@ app.post(
         focus: normalizeText(req.body?.focus) ?? undefined,
         actor,
         limit: Number(req.body?.limit ?? DEFAULT_AI_LIMIT),
+      });
+
+      // Salvar insight no banco
+      await prisma.companyInsight.create({
+        data: {
+          companyId: targetCompanyId,
+          suggestions,
+          focus: normalizeText(req.body?.focus) ?? null,
+          generatedBy: actor?.id ?? null,
+        },
       });
 
       res.json({ suggestions });

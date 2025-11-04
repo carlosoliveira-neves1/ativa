@@ -30,6 +30,7 @@ model Company {
   responses    QuestionResponse[]
   syncEntries  SyncEntry[]
   actionPlans  ActionPlan[]
+  insights     CompanyInsight[]
 }
 
 model User {
@@ -99,4 +100,17 @@ model ActionPlan {
   @@index([companyId])
   @@index([status])
   @@index([severity])
+}
+
+model CompanyInsight {
+  id          String   @id @default(uuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  suggestions String
+  focus       String?
+  generatedBy String?
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([createdAt])
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ChartOptions, TooltipItem } from "chart.js";
 import { Doughnut, Bar } from "react-chartjs-2";
 import {
@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useScoreSnapshot } from "../hooks/useScoreSnapshot";
 import { useAuthStore } from "../store/useAuthStore";
-import { generateInsights } from "../services/authClient";
+import { fetchInsights, generateInsights } from "../services/authClient";
 
 const riskLabels: Record<string, { chip: string; description: string }> = {
   Baixo: {
@@ -41,8 +41,33 @@ export function DashboardPage() {
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [insightCreatedAt, setInsightCreatedAt] = useState<string | null>(null);
 
   const companyId = user?.role === "ADMIN_GLOBAL" ? selectedCompanyId : user?.company?.id ?? null;
+
+  // Carregar insights automaticamente
+  useEffect(() => {
+    const loadInsights = async () => {
+      if (!companyId) return;
+      
+      setAiLoading(true);
+      setAiError(null);
+      try {
+        const response = await fetchInsights(companyId);
+        if (response.suggestions) {
+          setAiSuggestion(response.suggestions);
+          setInsightCreatedAt(response.createdAt ?? null);
+        }
+      } catch (error) {
+        console.error("Falha ao carregar insights", error);
+        // Não exibir erro se não houver insights ainda
+      } finally {
+        setAiLoading(false);
+      }
+    };
+
+    loadInsights();
+  }, [companyId]);
 
   const suggestionParagraphs = useMemo(() => {
     if (!aiSuggestion) {
@@ -64,6 +89,7 @@ export function DashboardPage() {
     try {
       const response = await generateInsights(companyId, focus ? { focus } : {});
       setAiSuggestion(response.suggestions);
+      setInsightCreatedAt(response.createdAt ?? null);
     } catch (error) {
       console.error("Falha ao gerar insights IA", error);
       const message = error instanceof Error ? error.message : "Erro ao gerar recomendações";

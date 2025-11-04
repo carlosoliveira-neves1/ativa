@@ -100,7 +100,27 @@ export interface InsightRequest {
 }
 
 export interface InsightResponse {
-  suggestions: string;
+  suggestions: string | null;
+  createdAt?: string;
+  focus?: string;
+}
+
+export async function fetchInsights(companyId: string): Promise<InsightResponse> {
+  const token = useAuthStore.getState().token;
+  if (!token) {
+    throw new Error("Token ausente");
+  }
+  const response = await fetch(`${API_BASE}/companies/${companyId}/insights`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (response.status === 401) {
+    useAuthStore.getState().clearSession();
+    throw new Error("Sessão expirada");
+  }
+  return parseResponse<InsightResponse>(response);
 }
 
 export async function generateInsights(
