@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer";
 
 const SMTP_HOST = process.env.SMTP_HOST || "smtp.locaweb.com.br";
-const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
 const SMTP_USER = process.env.SMTP_USER || "cadastro@infratechnologia.com.br";
 const SMTP_PASS = process.env.SMTP_PASS || "Mudar@1234";
 const SMTP_FROM = process.env.SMTP_FROM || "NR-1 Compliance <cadastro@infratechnologia.com.br>";
@@ -10,10 +10,11 @@ let transporter = null;
 
 function getTransporter() {
   if (!transporter) {
+    const port = SMTP_PORT;
     transporter = nodemailer.createTransport({
       host: SMTP_HOST,
-      port: SMTP_PORT,
-      secure: false, // true para 465, false para outras portas
+      port: port,
+      secure: port === 465, // true para 465, false para outras portas
       auth: {
         user: SMTP_USER,
         pass: SMTP_PASS,
@@ -21,6 +22,9 @@ function getTransporter() {
       tls: {
         rejectUnauthorized: false,
       },
+      connectionTimeout: 10000, // 10 segundos
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
     });
   }
   return transporter;
