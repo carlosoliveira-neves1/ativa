@@ -12,6 +12,7 @@
     "render:setup": "prisma generate && prisma db push --accept-data-loss",
     "test:email": "node server/test-email.js",
     "test:ai": "node server/test-huggingface.js",
+    "test:groq": "node server/test-groq.js",
     "delete:user": "node server/delete-user.js",
     "create:admin": "node server/create-admin.js"
   },
