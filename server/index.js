@@ -186,6 +186,9 @@ function requireRoles(...roles) {
   };
 }
 
+const requireAdminGlobal = requireRoles(UserRole.ADMIN_GLOBAL);
+const requireTrainingManager = requireRoles(UserRole.ADMIN_GLOBAL, UserRole.COMPANY_ADMIN);
+
 async function resolveCompanyContext(req, res) {
   const { role, companyId } = req.auth ?? {};
 
@@ -1972,44 +1975,131 @@ app.get("/trainings", authenticate, async (req, res) => {
     const { companyId } = req;
     
     let trainings;
+    const includeOpts = {
+      include: {
+        _count: {
+          select: {
+            userProgress: true,
+            certificates: true,
+          },
+        },
+        quizzes: {
+          select: {
+            id: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    };
+
     if (req.auth.role === "ADMIN_GLOBAL") {
       // Admin global vê todos os treinamentos
       trainings = await prisma.training.findMany({
-        where: { isActive: true },
-        include: {
-          _count: {
-            select: {
-              userProgress: true,
-              certificates: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
+        where: {},
+        ...includeOpts,
       });
     } else {
-      // Admin de empresa e usuários normais veem treinamentos disponíveis
+      // Admin de empresa e usuários normais veem apenas treinamentos ativos
       trainings = await prisma.training.findMany({
         where: { isActive: true },
-        include: {
-          _count: {
-            select: {
-              userProgress: true,
-              certificates: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
+        ...includeOpts,
       });
     }
 
-    res.json(trainings);
+    const trainingIds = trainings.map((training) => training.id);
+    const userId = req.auth.userId;
+
+    let progressByTraining = {};
+    if (userId && trainingIds.length > 0) {
+      const [progressRows, certificateRows, attemptRows] = await Promise.all([
+        prisma.userTrainingProgress.findMany({
+          where: {
+            userId,
+            trainingId: { in: trainingIds },
+          },
+        }),
+        prisma.certificate.findMany({
+          where: {
+            userId,
+            trainingId: { in: trainingIds },
+          },
+        }),
+        prisma.quizAttempt.findMany({
+          where: {
+            userId,
+            quiz: {
+              trainingId: { in: trainingIds },
+            },
+          },
+          include: {
+            quiz: {
+              select: {
+                trainingId: true,
+              },
+            },
+          },
+          orderBy: { completedAt: "desc" },
+        }),
+      ]);
+
+      const certificateMap = new Map(
+        certificateRows.map((certificate) => [certificate.trainingId, certificate])
+      );
+
+      const latestAttemptByTraining = new Map();
+      for (const attempt of attemptRows) {
+        const trId = attempt.quiz.trainingId;
+        if (!latestAttemptByTraining.has(trId)) {
+          latestAttemptByTraining.set(trId, attempt);
+        }
+      }
+
+      progressByTraining = progressRows.reduce((acc, row) => {
+        const latestAttempt = latestAttemptByTraining.get(row.trainingId) ?? null;
+        const certificate = certificateMap.get(row.trainingId) ?? null;
+
+        acc[row.trainingId] = {
+          status: row.status,
+          videoWatched: row.videoWatched,
+          quizCompleted: row.quizCompleted,
+          certificateGenerated: row.certificateGenerated,
+          lastAttempt: latestAttempt
+            ? {
+                attemptId: latestAttempt.id,
+                score: latestAttempt.score,
+                passed: latestAttempt.passed,
+                completedAt: latestAttempt.completedAt,
+              }
+            : null,
+          certificate: certificate
+            ? {
+                id: certificate.id,
+                url: certificate.certificateUrl,
+                issuedAt: certificate.issuedAt,
+              }
+            : null,
+        };
+
+        return acc;
+      }, {});
+    }
+
+    const result = trainings.map((training) => {
+      const { quizzes, ...rest } = training;
+      return {
+        ...rest,
+        userProgress: progressByTraining[training.id] ?? null,
+      };
+    });
+
+    res.json(result);
   } catch (error) {
     console.error("Failed to fetch trainings", error);
     res.status(500).json({ message: "Failed to fetch trainings" });
   }
 });
 
-app.post("/trainings", authenticate, requireAdminGlobal, async (req, res) => {
+app.post("/trainings", authenticate, requireTrainingManager, async (req, res) => {
   try {
     const { title, description, videoUrl } = req.body;
 
@@ -2035,7 +2125,7 @@ app.post("/trainings", authenticate, requireAdminGlobal, async (req, res) => {
   }
 });
 
-app.put("/trainings/:id", authenticate, requireAdminGlobal, async (req, res) => {
+app.put("/trainings/:id", authenticate, requireTrainingManager, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, videoUrl, isActive } = req.body;
@@ -2057,7 +2147,7 @@ app.put("/trainings/:id", authenticate, requireAdminGlobal, async (req, res) => 
   }
 });
 
-app.delete("/trainings/:id", authenticate, requireAdminGlobal, async (req, res) => {
+app.delete("/trainings/:id", authenticate, requireTrainingManager, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -2069,6 +2159,326 @@ app.delete("/trainings/:id", authenticate, requireAdminGlobal, async (req, res) 
   } catch (error) {
     console.error("Failed to delete training", error);
     res.status(500).json({ message: "Failed to delete training" });
+  }
+});
+
+// Utilitário para validar estrutura de questões
+function validateQuizPayload(body) {
+  if (!body || typeof body !== "object") {
+    return "Dados do quiz inválidos.";
+  }
+
+  const { title, questions, passingScore, timeLimit, isActive } = body;
+
+  if (!title || typeof title !== "string") {
+    return "Título do quiz é obrigatório.";
+  }
+
+  if (!Array.isArray(questions) || questions.length === 0) {
+    return "Informe pelo menos uma questão.";
+  }
+
+  for (const [index, question] of questions.entries()) {
+    if (!question || typeof question !== "object") {
+      return `Questão ${index + 1} inválida.`;
+    }
+
+    if (!question.prompt || typeof question.prompt !== "string") {
+      return `Questão ${index + 1}: texto é obrigatório.`;
+    }
+
+    if (!Array.isArray(question.options) || question.options.length < 2) {
+      return `Questão ${index + 1}: forneça ao menos duas alternativas.`;
+    }
+
+    if (typeof question.correctOptionIndex !== "number" || question.correctOptionIndex < 0 || question.correctOptionIndex >= question.options.length) {
+      return `Questão ${index + 1}: índice de resposta correta inválido.`;
+    }
+  }
+
+  if (passingScore !== undefined) {
+    const numericScore = Number(passingScore);
+    if (Number.isNaN(numericScore) || numericScore < 0 || numericScore > 100) {
+      return "Nota mínima deve estar entre 0 e 100.";
+    }
+  }
+
+  if (timeLimit !== undefined) {
+    const numericLimit = Number(timeLimit);
+    if (Number.isNaN(numericLimit) || numericLimit < 1 || numericLimit > 600) {
+      return "Tempo limite deve estar entre 1 e 600 minutos.";
+    }
+  }
+
+  if (isActive !== undefined && typeof isActive !== "boolean") {
+    return "Campo isActive deve ser verdadeiro ou falso.";
+  }
+
+  return null;
+}
+
+app.get("/trainings/:trainingId/quizzes", authenticate, async (req, res) => {
+  try {
+    const { trainingId } = req.params;
+    const includeInactive = req.auth.role === "ADMIN_GLOBAL";
+
+    const training = await prisma.training.findUnique({ where: { id: trainingId } });
+    if (!training) {
+      return res.status(404).json({ message: "Treinamento não encontrado" });
+    }
+
+    if (!training.isActive && req.auth.role !== "ADMIN_GLOBAL") {
+      return res.status(403).json({ message: "Treinamento inativo" });
+    }
+
+    const quizzes = await prisma.quiz.findMany({
+      where: {
+        trainingId,
+        ...(includeInactive ? {} : { isActive: true }),
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.json(quizzes);
+  } catch (error) {
+    console.error("Failed to fetch quizzes", error);
+    res.status(500).json({ message: "Failed to fetch quizzes" });
+  }
+});
+
+app.post("/trainings/:trainingId/quizzes", authenticate, requireTrainingManager, async (req, res) => {
+  try {
+    const { trainingId } = req.params;
+    const training = await prisma.training.findUnique({ where: { id: trainingId } });
+    if (!training) {
+      return res.status(404).json({ message: "Treinamento não encontrado" });
+    }
+
+    const validationError = validateQuizPayload(req.body);
+    if (validationError) {
+      return res.status(400).json({ message: validationError });
+    }
+
+    const quiz = await prisma.quiz.create({
+      data: {
+        trainingId,
+        title: req.body.title.trim(),
+        questions: req.body.questions,
+        passingScore: Number(req.body.passingScore ?? 70),
+        timeLimit: req.body.timeLimit !== undefined ? Number(req.body.timeLimit) : null,
+        isActive: req.body.isActive ?? true,
+      },
+    });
+
+    res.status(201).json(quiz);
+  } catch (error) {
+    console.error("Failed to create quiz", error);
+    res.status(500).json({ message: "Failed to create quiz" });
+  }
+});
+
+app.put("/quizzes/:quizId", authenticate, requireTrainingManager, async (req, res) => {
+  try {
+    const { quizId } = req.params;
+    const existing = await prisma.quiz.findUnique({ where: { id: quizId } });
+    if (!existing) {
+      return res.status(404).json({ message: "Quiz não encontrado" });
+    }
+
+    if (req.body.questions !== undefined) {
+      const validationError = validateQuizPayload({
+        title: req.body.title ?? existing.title,
+        questions: req.body.questions,
+        passingScore: req.body.passingScore ?? existing.passingScore,
+        timeLimit: req.body.timeLimit ?? existing.timeLimit,
+        isActive: req.body.isActive ?? existing.isActive,
+      });
+      if (validationError) {
+        return res.status(400).json({ message: validationError });
+      }
+    }
+
+    const quiz = await prisma.quiz.update({
+      where: { id: quizId },
+      data: {
+        ...(req.body.title && { title: req.body.title.trim() }),
+        ...(req.body.questions && { questions: req.body.questions }),
+        ...(req.body.passingScore !== undefined && { passingScore: Number(req.body.passingScore) }),
+        ...(req.body.timeLimit !== undefined && { timeLimit: req.body.timeLimit !== null ? Number(req.body.timeLimit) : null }),
+        ...(req.body.isActive !== undefined && { isActive: req.body.isActive }),
+      },
+    });
+
+    res.json(quiz);
+  } catch (error) {
+    console.error("Failed to update quiz", error);
+    res.status(500).json({ message: "Failed to update quiz" });
+  }
+});
+
+app.delete("/quizzes/:quizId", authenticate, requireTrainingManager, async (req, res) => {
+  try {
+    const { quizId } = req.params;
+    await prisma.quiz.delete({ where: { id: quizId } });
+    res.status(204).end();
+  } catch (error) {
+    console.error("Failed to delete quiz", error);
+    res.status(500).json({ message: "Failed to delete quiz" });
+  }
+});
+
+function calculateQuizScore(quiz, answers) {
+  const totalQuestions = quiz.questions.length;
+  if (!Array.isArray(answers) || answers.length !== totalQuestions) {
+    throw new Error("Número de respostas inválido.");
+  }
+
+  let correct = 0;
+  quiz.questions.forEach((question, index) => {
+    if (answers[index] === question.correctOptionIndex) {
+      correct += 1;
+    }
+  });
+
+  const score = Math.round((correct / totalQuestions) * 100);
+  const passed = score >= quiz.passingScore;
+
+  return { score, correct, totalQuestions, passed };
+}
+
+function buildCertificateUrl({ quizId, trainingId, userId }) {
+  return `${process.env.FRONTEND_URL ?? "https://app"}/certificados/${trainingId}/${quizId}/${userId}`;
+}
+
+app.post("/quizzes/:quizId/attempts", authenticate, async (req, res) => {
+  try {
+    const { quizId } = req.params;
+    const { answers } = req.body;
+
+    const quiz = await prisma.quiz.findUnique({
+      where: { id: quizId },
+      include: {
+        training: true,
+      },
+    });
+
+    if (!quiz) {
+      return res.status(404).json({ message: "Quiz não encontrado" });
+    }
+
+    if (!quiz.isActive || !quiz.training.isActive) {
+      return res.status(403).json({ message: "Quiz inativo" });
+    }
+
+    const validationResult = calculateQuizScore(quiz, answers);
+
+    const attempt = await prisma.$transaction(async (tx) => {
+      const newAttempt = await tx.quizAttempt.create({
+        data: {
+          quizId: quiz.id,
+          userId: req.auth.userId,
+          answers,
+          score: validationResult.score,
+          passed: validationResult.passed,
+        },
+      });
+
+      let certificate = null;
+
+      if (validationResult.passed) {
+        certificate = await tx.certificate.upsert({
+          where: {
+            userId_trainingId: {
+              userId: req.auth.userId,
+              trainingId: quiz.trainingId,
+            },
+          },
+          update: {
+            quizId: quiz.id,
+            certificateUrl: buildCertificateUrl({
+              quizId: quiz.id,
+              trainingId: quiz.trainingId,
+              userId: req.auth.userId,
+            }),
+            issuedAt: new Date(),
+          },
+          create: {
+            trainingId: quiz.trainingId,
+            quizId: quiz.id,
+            userId: req.auth.userId,
+            certificateUrl: buildCertificateUrl({
+              quizId: quiz.id,
+              trainingId: quiz.trainingId,
+              userId: req.auth.userId,
+            }),
+          },
+        });
+
+        await tx.userTrainingProgress.upsert({
+          where: {
+            userId_trainingId: {
+              userId: req.auth.userId,
+              trainingId: quiz.trainingId,
+            },
+          },
+          update: {
+            quizCompleted: true,
+            certificateGenerated: true,
+            status: "completed",
+            completedAt: new Date(),
+          },
+          create: {
+            userId: req.auth.userId,
+            trainingId: quiz.trainingId,
+            status: "completed",
+            videoWatched: true,
+            quizCompleted: true,
+            certificateGenerated: true,
+            completedAt: new Date(),
+          },
+        });
+
+        return { newAttempt, certificate };
+      }
+
+      await tx.userTrainingProgress.upsert({
+        where: {
+          userId_trainingId: {
+            userId: req.auth.userId,
+            trainingId: quiz.trainingId,
+          },
+        },
+        update: {
+          quizCompleted: false,
+          certificateGenerated: false,
+          status: "in_progress",
+        },
+        create: {
+          userId: req.auth.userId,
+          trainingId: quiz.trainingId,
+          status: "in_progress",
+          videoWatched: true,
+        },
+      });
+
+      return { newAttempt, certificate: null };
+    });
+
+    res.status(201).json({
+      attempt: {
+        id: attempt.newAttempt.id,
+        score: validationResult.score,
+        passed: validationResult.passed,
+        correct: validationResult.correct,
+        totalQuestions: validationResult.totalQuestions,
+        completedAt: attempt.newAttempt.completedAt,
+      },
+      certificate: attempt.certificate,
+    });
+  } catch (error) {
+    console.error("Failed to submit quiz attempt", error);
+    const message = error instanceof Error ? error.message : "Failed to submit quiz attempt";
+    res.status(400).json({ message });
   }
 });
 
