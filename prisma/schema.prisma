@@ -34,19 +34,21 @@ model Company {
 }
 
 model User {
-  id             String          @id @default(uuid())
-  name           String
-  login          String          @unique
-  email          String          @unique
-  passwordHash   String
-  role           UserRole        @default(USER)
-  companyId      String?
-  company        Company?        @relation(fields: [companyId], references: [id])
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  passwordResets PasswordReset[]
+  id                String          @id @default(uuid())
+  name              String
+  login             String          @unique
+  email             String          @unique
+  passwordHash      String
+  role              UserRole        @default(USER)
+  companyId         String?
+  company           Company?        @relation(fields: [companyId], references: [id])
+  questionnaireToken String?        @unique
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  passwordResets    PasswordReset[]
 
   @@index([companyId])
+  @@index([questionnaireToken])
 }
 
 model PasswordReset {

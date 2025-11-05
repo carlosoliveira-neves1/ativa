@@ -358,6 +358,89 @@ Este é um e-mail automático. Por favor, não responda.
   }
 }
 
+export async function sendQuestionnaireInvitationEmail({ to, name, companyCode, companyName, questionnaireToken, questionnaireName }) {
+  const subject = `Convite para preencher Questionário ${questionnaireName} - ${companyName}`;
+  
+  const questionnaireLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/questionnaire/token/${questionnaireToken}`;
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #1e40af; color: white; padding: 20px; text-align: center; }
+        .content { padding: 30px 20px; }
+        .button { display: inline-block; background: #1e40af; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+        .footer { background: #f3f4f6; padding: 20px; text-align: center; font-size: 12px; color: #666; }
+        .info-box { background: #f8fafc; border-left: 4px solid #1e40af; padding: 15px; margin: 20px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>📋 Convite para Questionário NR-1</h1>
+        </div>
+        <div class="content">
+          <p>Olá <strong>${name}</strong>,</p>
+          <p>Você foi convidado(a) a preencher o questionário <strong>${questionnaireName}</strong> para a empresa <strong>${companyName}</strong>.</p>
+          
+          <div class="info-box">
+            <p><strong>Dados da Empresa:</strong></p>
+            <p>Código: <strong>${companyCode}</strong></p>
+            <p>Empresa: <strong>${companyName}</strong></p>
+          </div>
+          
+          <p>Para acessar o questionário, clique no botão abaixo ou use o link fornecido:</p>
+          
+          <div style="text-align: center;">
+            <a href="${questionnaireLink}" class="button">Acessar Questionário</a>
+          </div>
+          
+          <p>Ou copie e cole este link no seu navegador:</p>
+          <p style="word-break: break-all; background: #f8fafc; padding: 10px; border-radius: 5px;">
+            ${questionnaireLink}
+          </p>
+          
+          <p><strong>Importante:</strong></p>
+          <ul>
+            <li>O link é pessoal e intransferível</li>
+            <li>Não é necessário criar senha ou fazer login</li>
+            <li>Seu progresso será salvo automaticamente</li>
+            <li>Você pode retornar e continuar a qualquer momento</li>
+          </ul>
+          
+          <p>Se você tiver alguma dúvida, entre em contato com o administrador do sistema.</p>
+          
+          <p>Atenciosamente,<br>Equipe NR-1 Compliance</p>
+        </div>
+        <div class="footer">
+          <p>Este é um email automático. Por favor, não responda a este endereço.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  try {
+    const transporter = getTransporter();
+    const info = await transporter.sendMail({
+      from: SMTP_FROM,
+      to,
+      subject,
+      html,
+    });
+
+    console.log("Email de convite de questionário enviado com sucesso:", info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error("Erro ao enviar email de convite de questionário:", error);
+    throw new Error(`Falha ao enviar email: ${error.message}`);
+  }
+}
+
 export function isEmailConfigured() {
   return Boolean(SMTP_USER && SMTP_PASS);
 }

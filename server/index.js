@@ -3,17 +3,14 @@ import cors from "cors";
 import express from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes } from "node:crypto";
 import { PrismaClient, UserRole, Prisma } from "@prisma/client";
+import ExcelJS from "exceljs";
+import multer from "multer";
 import { generateCompanyInsights, isAiConfigured } from "./services/aiSuggestions.js";
-import { sendWelcomeEmail, sendPasswordResetEmail, isEmailConfigured } from "./services/emailService.js";
+import { sendWelcomeEmail, sendPasswordResetEmail, sendQuestionnaireInvitationEmail, isEmailConfigured } from "./services/emailService.js";
 
 const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL + '?connection_limit=3&pool_timeout=20',
-    },
-  },
   log: ['error', 'warn'],
 });
 const DEFAULT_QUESTIONNAIRE = "default";
@@ -25,6 +22,14 @@ const DEFAULT_AI_LIMIT = Number(process.env.AI_SUGGESTION_LIMIT ?? 5);
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "15mb" }));
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
+    files: 1,
+  },
+});
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-insecure-secret";
 if (!process.env.JWT_SECRET) {
@@ -131,6 +136,10 @@ function validateCNPJ(cnpj) {
 function validateEmail(email) {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
+}
+
+function generateQuestionnaireToken() {
+  return randomBytes(32).toString('hex');
 }
 
 async function authenticate(req, res, next) {
@@ -1092,6 +1101,312 @@ app.get("/companies", authenticate, async (req, res) => {
   }
 });
 
+app.get(
+  "/companies/import/template",
+  authenticate,
+  requireRoles(UserRole.ADMIN_GLOBAL),
+  async (req, res) => {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "Ativa NR-1";
+      workbook.created = new Date();
+
+      const instructionsSheet = workbook.addWorksheet("Instruções");
+      instructionsSheet.getColumn(1).width = 100;
+      instructionsSheet.addRows([
+        [
+          "Como usar esta planilha:",
+        ],
+        [
+          "1. Preencha a aba 'Clientes' com os dados necessários. Campos marcados com * são obrigatórios.",
+        ],
+        [
+          "2. Utilize apenas um questionário por importação (escolhido no aplicativo).",
+        ],
+        [
+          "3. Formatos válidos: CNPJ com 14 dígitos (com ou sem pontuação) e e-mail válido.",
+        ],
+        [
+          "4. CPF, Nome e Nome Fantasia/Razão Social são opcionais, mas recomendados para personalização.",
+        ],
+        [
+          "5. Após importar, cada contato receberá um e-mail com link para preencher o questionário selecionado.",
+        ],
+      ]);
+      instructionsSheet.getRow(1).font = { bold: true };
+
+      const dataSheet = workbook.addWorksheet("Clientes");
+      dataSheet.columns = [
+        { header: "CNPJ *", key: "cnpj", width: 22 },
+        { header: "Email *", key: "email", width: 32 },
+        { header: "CPF", key: "cpf", width: 18 },
+        { header: "Nome", key: "nome", width: 28 },
+        { header: "Nome Fantasia / Razão Social", key: "nomeFantasia", width: 32 },
+      ];
+      dataSheet.getRow(1).font = { bold: true };
+      dataSheet.addRow({
+        cnpj: "12.345.678/0001-90",
+        email: "contato@empresa.com",
+        cpf: "123.456.789-00",
+        nome: "Maria Silva",
+        nomeFantasia: "Empresa Exemplo LTDA",
+      });
+      dataSheet.addRow({
+        cnpj: "98.765.432/0001-10",
+        email: "atendimento@outrocliente.com",
+      });
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        "attachment; filename=importacao_clientes_template.xlsx"
+      );
+
+      await workbook.xlsx.write(res);
+      res.end();
+    } catch (error) {
+      console.error("Failed to generate import template", error);
+      res.status(500).json({ message: "Erro ao gerar template de importação" });
+    }
+  }
+);
+
+app.post(
+  "/companies/import",
+  authenticate,
+  requireRoles(UserRole.ADMIN_GLOBAL),
+  upload.single('file'),
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ message: "Nenhum arquivo enviado" });
+    }
+
+    const { questionnaireId, questionnaireName } = req.body;
+    if (!questionnaireId || !questionnaireName) {
+      return res.status(400).json({ message: "Questionário não selecionado" });
+    }
+
+    try {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(req.file.buffer);
+
+      const worksheet = workbook.getWorksheet('Clientes');
+      if (!worksheet) {
+        return res.status(400).json({ message: "Aba 'Clientes' não encontrada na planilha" });
+      }
+
+      const results = [];
+      let totalRows = 0;
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Pular header (linha 1)
+      for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber++) {
+        const row = worksheet.getRow(rowNumber);
+        if (!row || row.values.every(cell => !cell)) continue;
+
+        totalRows++;
+        const rowData = {
+          cnpj: row.getCell(1).value?.toString().trim() || '',
+          email: row.getCell(2).value?.toString().trim() || '',
+          cpf: row.getCell(3).value?.toString().trim() || '',
+          nome: row.getCell(4).value?.toString().trim() || '',
+          nomeFantasia: row.getCell(5).value?.toString().trim() || '',
+        };
+
+        const errors = [];
+
+        // Validações
+        if (!rowData.cnpj) {
+          errors.push('CNPJ é obrigatório');
+        } else if (!validateCNPJ(rowData.cnpj)) {
+          errors.push('CNPJ inválido');
+        }
+
+        if (!rowData.email) {
+          errors.push('Email é obrigatório');
+        } else if (!validateEmail(rowData.email)) {
+          errors.push('Email inválido');
+        }
+
+        if (errors.length > 0) {
+          results.push({
+            row: rowNumber,
+            status: 'error',
+            errors,
+            data: rowData
+          });
+          errorCount++;
+          continue;
+        }
+
+        try {
+          // Verificar se empresa já existe
+          const cnpjLimpo = sanitizeCnpj(rowData.cnpj);
+          let company = await prisma.company.findUnique({
+            where: { cnpj: cnpjLimpo }
+          });
+
+          if (!company) {
+            // Criar nova empresa
+            const companyCode = generateCompanyCode(cnpjLimpo);
+            const nomeFantasia = rowData.nomeFantasia || `Empresa ${companyCode}`;
+            const razaoSocial = rowData.nomeFantasia || nomeFantasia;
+
+            company = await prisma.company.create({
+              data: {
+                code: companyCode,
+                nomeFantasia,
+                razaoSocial,
+                cnpj: cnpjLimpo,
+              }
+            });
+          }
+
+          // Verificar se usuário já existe
+          const normalizedEmail = normalizeEmail(rowData.email);
+          let user = await prisma.user.findUnique({
+            where: { email: normalizedEmail }
+          });
+
+          if (!user) {
+            // Gerar token para acesso ao questionário
+            const questionnaireToken = generateQuestionnaireToken();
+            
+            // Criar usuário com token
+            const tempPassword = generateTemporaryPassword();
+            const login = normalizedEmail.split('@')[0] + '_' + randomUUID().slice(0, 8);
+            
+            user = await prisma.user.create({
+              data: {
+                name: rowData.nome || 'Contato da Empresa',
+                login: normalizeLogin(login),
+                email: normalizedEmail,
+                passwordHash: await hashPassword(tempPassword),
+                role: UserRole.USER,
+                companyId: company.id,
+                questionnaireToken,
+              }
+            });
+
+            // Enviar email de convite
+            try {
+              await sendQuestionnaireInvitationEmail({
+                to: normalizedEmail,
+                name: user.name,
+                companyCode: company.code,
+                companyName: company.nomeFantasia,
+                questionnaireToken,
+                questionnaireName,
+              });
+
+              results.push({
+                row: rowNumber,
+                status: 'success',
+                message: 'Empresa e usuário criados com sucesso. Email enviado.',
+                data: {
+                  companyCode: company.code,
+                  companyName: company.nomeFantasia,
+                  userEmail: user.email,
+                  userName: user.name,
+                }
+              });
+              successCount++;
+            } catch (emailError) {
+              console.error('Erro ao enviar email:', emailError);
+              results.push({
+                row: rowNumber,
+                status: 'warning',
+                message: 'Empresa e usuário criados, mas falha ao enviar email.',
+                errors: [emailError.message],
+                data: {
+                  companyCode: company.code,
+                  companyName: company.nomeFantasia,
+                  userEmail: user.email,
+                  userName: user.name,
+                }
+              });
+              successCount++;
+            }
+          } else {
+            // Usuário já existe - gerar novo token
+            const questionnaireToken = generateQuestionnaireToken();
+            
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { questionnaireToken }
+            });
+
+            // Enviar email com novo token
+            try {
+              await sendQuestionnaireInvitationEmail({
+                to: normalizedEmail,
+                name: user.name,
+                companyCode: company.code,
+                companyName: company.nomeFantasia,
+                questionnaireToken,
+                questionnaireName,
+              });
+
+              results.push({
+                row: rowNumber,
+                status: 'success',
+                message: 'Usuário já existe. Novo token gerado e email enviado.',
+                data: {
+                  companyCode: company.code,
+                  companyName: company.nomeFantasia,
+                  userEmail: user.email,
+                  userName: user.name,
+                }
+              });
+              successCount++;
+            } catch (emailError) {
+              console.error('Erro ao enviar email:', emailError);
+              results.push({
+                row: rowNumber,
+                status: 'warning',
+                message: 'Novo token gerado, mas falha ao enviar email.',
+                errors: [emailError.message],
+                data: {
+                  companyCode: company.code,
+                  companyName: company.nomeFantasia,
+                  userEmail: user.email,
+                  userName: user.name,
+                }
+              });
+              successCount++;
+            }
+          }
+        } catch (dbError) {
+          console.error('Erro ao processar linha:', rowNumber, dbError);
+          results.push({
+            row: rowNumber,
+            status: 'error',
+            errors: ['Erro interno: ' + dbError.message],
+            data: rowData
+          });
+          errorCount++;
+        }
+      }
+
+      res.json({
+        summary: {
+          total: totalRows,
+          success: successCount,
+          errors: errorCount,
+        },
+        results
+      });
+    } catch (error) {
+      console.error("Failed to process import", error);
+      res.status(500).json({ message: "Erro ao processar importação" });
+    }
+  }
+);
+
 // Listar todos os usuários (Admin Global apenas)
 app.get("/users", authenticate, async (req, res) => {
   if (req.user.role !== "ADMIN_GLOBAL") {
@@ -1599,6 +1914,57 @@ app.delete(
     }
   })
 );
+
+// Rota pública para acesso ao questionário via token
+app.get("/questionnaire/token/:token", async (req, res) => {
+  const { token } = req.params;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { questionnaireToken: token },
+      include: {
+        company: {
+          select: {
+            id: true,
+            code: true,
+            nomeFantasia: true,
+            razaoSocial: true,
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "Token inválido ou expirado" });
+    }
+
+    if (!user.company) {
+      return res.status(404).json({ message: "Empresa não encontrada" });
+    }
+
+    // Gerar JWT temporário para acesso ao questionário
+    const tempToken = signToken({
+      id: user.id,
+      role: user.role,
+      companyId: user.companyId,
+      name: user.name,
+      email: user.email,
+    });
+
+    res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      },
+      company: user.company,
+      token: tempToken,
+    });
+  } catch (error) {
+    console.error("Failed to validate questionnaire token", error);
+    res.status(500).json({ message: "Erro ao validar token" });
+  }
+});
 
 const PORT = process.env.PORT ?? 4000;
 app.listen(PORT, () => {
