@@ -6,6 +6,7 @@ import { ReportsPage } from "./pages/ReportsPage";
 import { ActionPlansPage } from "./pages/ActionPlansPage";
 import { UsersPage } from "./pages/UsersPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { TrainingPage } from "./pages/TrainingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { SignupPage } from "./pages/SignupPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
@@ -30,6 +31,7 @@ function App() {
             <Route path="/relatorios" element={<ReportsPage />} />
             <Route path="/planos" element={<ActionPlansPage />} />
             <Route path="/usuarios" element={<UsersPage />} />
+            <Route path="/treinamentos" element={<TrainingPage />} />
             <Route path="/perfil" element={<ProfilePage />} />
           </Route>
         </Route>

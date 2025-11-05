@@ -1966,6 +1966,112 @@ app.get("/questionnaire/token/:token", async (req, res) => {
   }
 });
 
+// Endpoints para Treinamentos (EAD)
+app.get("/trainings", authenticate, async (req, res) => {
+  try {
+    const { companyId } = req;
+    
+    let trainings;
+    if (req.auth.role === "ADMIN_GLOBAL") {
+      // Admin global vê todos os treinamentos
+      trainings = await prisma.training.findMany({
+        where: { isActive: true },
+        include: {
+          _count: {
+            select: {
+              userProgress: true,
+              certificates: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    } else {
+      // Admin de empresa e usuários normais veem treinamentos disponíveis
+      trainings = await prisma.training.findMany({
+        where: { isActive: true },
+        include: {
+          _count: {
+            select: {
+              userProgress: true,
+              certificates: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+
+    res.json(trainings);
+  } catch (error) {
+    console.error("Failed to fetch trainings", error);
+    res.status(500).json({ message: "Failed to fetch trainings" });
+  }
+});
+
+app.post("/trainings", authenticate, requireAdminGlobal, async (req, res) => {
+  try {
+    const { title, description, videoUrl } = req.body;
+
+    if (!title || !description || !videoUrl) {
+      return res.status(400).json({ 
+        message: "Título, descrição e URL do vídeo são obrigatórios" 
+      });
+    }
+
+    const training = await prisma.training.create({
+      data: {
+        title,
+        description,
+        videoUrl,
+        isActive: true,
+      },
+    });
+
+    res.status(201).json(training);
+  } catch (error) {
+    console.error("Failed to create training", error);
+    res.status(500).json({ message: "Failed to create training" });
+  }
+});
+
+app.put("/trainings/:id", authenticate, requireAdminGlobal, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, videoUrl, isActive } = req.body;
+
+    const training = await prisma.training.update({
+      where: { id },
+      data: {
+        ...(title && { title }),
+        ...(description && { description }),
+        ...(videoUrl && { videoUrl }),
+        ...(typeof isActive === "boolean" && { isActive }),
+      },
+    });
+
+    res.json(training);
+  } catch (error) {
+    console.error("Failed to update training", error);
+    res.status(500).json({ message: "Failed to update training" });
+  }
+});
+
+app.delete("/trainings/:id", authenticate, requireAdminGlobal, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await prisma.training.delete({
+      where: { id },
+    });
+
+    res.status(204).end();
+  } catch (error) {
+    console.error("Failed to delete training", error);
+    res.status(500).json({ message: "Failed to delete training" });
+  }
+});
+
 const PORT = process.env.PORT ?? 4000;
 app.listen(PORT, () => {
   /* eslint-disable no-console */

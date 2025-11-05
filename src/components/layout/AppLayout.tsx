@@ -11,6 +11,7 @@ import {
   ShieldPlus,
   Users,
   User,
+  GraduationCap,
   X,
 } from "lucide-react";
 import { useQuestionnaireStore } from "../../store/useQuestionnaireStore";
@@ -24,6 +25,7 @@ const navigation = [
   { label: "Questionários", to: "/questionarios", icon: ClipboardCheck },
   { label: "Relatórios", to: "/relatorios", icon: FileBarChart },
   { label: "Planos de Ação", to: "/planos", icon: ShieldPlus },
+  { label: "Treinamentos", to: "/treinamentos", icon: GraduationCap },
   { label: "Usuários", to: "/usuarios", icon: Users, adminOnly: true },
   { label: "Perfil", to: "/perfil", icon: User },
 ];
