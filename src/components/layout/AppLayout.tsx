@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   Activity,
@@ -43,6 +43,7 @@ export function AppLayout() {
   const [companiesLoading, setCompaniesLoading] = useState(false);
   const [companyQuery, setCompanyQuery] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const hasAutoSelectedCompany = useRef(false);
 
   useEffect(() => {
     if (!token || user?.role !== "ADMIN_GLOBAL") {
@@ -76,6 +77,26 @@ export function AppLayout() {
       cancelled = true;
     };
   }, [token, user?.role, companyQuery]);
+
+  useEffect(() => {
+    if (user?.role !== "ADMIN_GLOBAL") {
+      hasAutoSelectedCompany.current = false;
+      return;
+    }
+
+    if (companiesLoading || companies.length === 0) {
+      return;
+    }
+
+    const currentIsValid = selectedCompanyId
+      ? companies.some((company) => company.id === selectedCompanyId)
+      : false;
+
+    if (!currentIsValid && !hasAutoSelectedCompany.current) {
+      setSelectedCompanyId(companies[0].id);
+      hasAutoSelectedCompany.current = true;
+    }
+  }, [user?.role, companiesLoading, companies, selectedCompanyId, setSelectedCompanyId]);
 
   const handleSync = () => {
     registerSync({

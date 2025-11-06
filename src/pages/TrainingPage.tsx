@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   GraduationCap,
   Play,
@@ -13,6 +14,7 @@ import {
   Eye,
 } from "lucide-react";
 import { useAuthStore } from "../store/useAuthStore";
+import { useNotifications } from "../hooks/useNotifications";
 
 interface Training {
   id: string;
@@ -64,6 +66,33 @@ interface UserProgress {
   } | null;
 }
 
+interface QuizAttemptResult {
+  id: string;
+  attemptId: string;
+  score: number;
+  passed: boolean;
+  correct: number;
+  totalQuestions: number;
+  completedAt: string;
+}
+
+interface QuizPlayerState {
+  visible: boolean;
+  training: Training | null;
+  quizzes: Quiz[];
+  selectedQuizId: string;
+  answers: number[];
+  loading: boolean;
+  error: string | null;
+  submitting: boolean;
+  result: QuizAttemptResult | null;
+  certificate: {
+    id: string;
+    url: string;
+    issuedAt: string;
+  } | null;
+}
+
 function formatStatusLabel(status: UserProgress["status"]) {
   switch (status) {
     case "completed":
@@ -76,15 +105,17 @@ function formatStatusLabel(status: UserProgress["status"]) {
 }
 
 export function TrainingPage() {
-  const { user, token } = useAuthStore((state) => ({
+  const { addNotification } = useNotifications();
+  const { user, token, selectedCompanyId } = useAuthStore((state) => ({
     user: state.user,
     token: state.token,
+    selectedCompanyId: state.selectedCompanyId,
   }));
+  const navigate = useNavigate();
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedTraining, setSelectedTraining] = useState<Training | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [formTitle, setFormTitle] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formVideoUrl, setFormVideoUrl] = useState("");
@@ -114,18 +145,38 @@ export function TrainingPage() {
   const [isQuizSaving, setIsQuizSaving] = useState(false);
   const [quizFormError, setQuizFormError] = useState<string | null>(null);
   const [quizDeletingId, setQuizDeletingId] = useState<string | null>(null);
+  const [watchModalOpen, setWatchModalOpen] = useState(false);
+  const [watchUrl, setWatchUrl] = useState<string | null>(null);
+  const [quizPlayer, setQuizPlayer] = useState<QuizPlayerState>({
+    visible: false,
+    training: null,
+    quizzes: [],
+    selectedQuizId: "",
+    answers: [],
+    loading: false,
+    error: null,
+    submitting: false,
+    result: null,
+    certificate: null,
+  });
+
+  const notify = useCallback(
+    (message: string, type: "success" | "error" | "info" = "info") => {
+      addNotification({ type, message });
+    },
+    [addNotification]
+  );
 
   const apiBase = useMemo(() => {
     const raw = import.meta.env.VITE_API_URL ?? (typeof window !== "undefined" ? window.location.origin : "");
     return raw.replace(/\/$/, "");
   }, []);
 
-  useEffect(() => {
-    setIsAdmin(user?.role === "ADMIN_GLOBAL" || user?.role === "COMPANY_ADMIN");
-    loadTrainings();
-  }, [user]);
+  const userRole = user?.role;
+  const isAdmin = userRole === "ADMIN_GLOBAL" || userRole === "COMPANY_ADMIN";
+  const isAdminGlobal = userRole === "ADMIN_GLOBAL";
 
-  const loadTrainings = async () => {
+  const loadTrainings = useCallback(async () => {
     try {
       const sessionToken = token ?? localStorage.getItem("token");
       if (!sessionToken) {
@@ -134,19 +185,30 @@ export function TrainingPage() {
       const response = await fetch(`${apiBase}/trainings`, {
         headers: {
           Authorization: `Bearer ${sessionToken}`,
+          ...(isAdminGlobal && selectedCompanyId
+            ? { "x-company-id": selectedCompanyId }
+            : {}),
         },
       });
 
       if (response.ok) {
         const data = await response.json();
         setTrainings(data);
+      } else {
+        const data = await response.json().catch(() => ({ message: "Erro ao carregar treinamentos." }));
+        throw new Error(data.message || "Erro ao carregar treinamentos.");
       }
     } catch (error) {
       console.error("Erro ao carregar treinamentos:", error);
+      notify(error instanceof Error ? error.message : "Erro ao carregar treinamentos.", "error");
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiBase, isAdminGlobal, notify, selectedCompanyId, token]);
+
+  useEffect(() => {
+    loadTrainings();
+  }, [loadTrainings]);
 
   const resetForm = () => {
     setSelectedTraining(null);
@@ -172,7 +234,7 @@ export function TrainingPage() {
     setShowCreateModal(true);
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setIsSaving(true);
     setErrorMessage(null);
@@ -288,38 +350,223 @@ export function TrainingPage() {
     setQuizFormError(null);
   };
 
-  const openQuizModal = async (training: Training) => {
-    setQuizTraining(training);
-    setShowQuizModal(true);
-    setQuizError(null);
-    resetQuizForm();
-    setQuizLoading(true);
+  const ensureCompanyContext = useCallback(() => {
+    if (isAdminGlobal && !selectedCompanyId) {
+      throw new Error("Selecione uma empresa para continuar.");
+    }
+  }, [isAdminGlobal, selectedCompanyId]);
 
-    try {
+  const fetchJson = useCallback(
+    async <T,>(url: string, options?: RequestInit) => {
       const sessionToken = token ?? localStorage.getItem("token");
       if (!sessionToken) {
         throw new Error("Sessão expirada. Faça login novamente.");
       }
-      const response = await fetch(`${apiBase}/trainings/${training.id}/quizzes`, {
-        headers: {
-          Authorization: `Bearer ${sessionToken}`,
-        },
+
+      const headers = new Headers(options?.headers);
+      headers.set("Authorization", `Bearer ${sessionToken}`);
+      if (isAdminGlobal && selectedCompanyId) {
+        headers.set("x-company-id", selectedCompanyId);
+      }
+
+      const response = await fetch(url, {
+        ...options,
+        headers,
       });
 
       if (!response.ok) {
-        const data = await response.json().catch(() => ({ message: "Erro ao buscar avaliações." }));
-        throw new Error(data.message || "Erro ao buscar avaliações.");
+        const data = await response.json().catch(() => ({ message: "Erro na requisição." }));
+        throw new Error(data.message || "Erro na requisição.");
       }
 
-      const data: Quiz[] = await response.json();
-      setQuizzes(data);
+      return response.json() as Promise<T>;
+    },
+    [isAdminGlobal, selectedCompanyId, token]
+  );
+
+  const openQuizModal = useCallback(
+    async (training: Training) => {
+      setQuizTraining(training);
+      setShowQuizModal(true);
+      setQuizLoading(true);
+      setQuizError(null);
+      try {
+        ensureCompanyContext();
+        const quizzes = await fetchJson<Quiz[]>(`${apiBase}/trainings/${training.id}/quizzes`);
+        setQuizzes(quizzes);
+      } catch (error) {
+        console.error("Erro ao carregar provas:", error);
+        const message = error instanceof Error ? error.message : "Erro ao carregar avaliações.";
+        setQuizError(message);
+        notify(message, "error");
+      } finally {
+        setQuizLoading(false);
+      }
+    },
+    [apiBase, ensureCompanyContext, fetchJson, notify]
+  );
+
+  const openWatchModal = useCallback(
+    (training: Training) => {
+      try {
+        ensureCompanyContext();
+        const embedUrl = getEmbedUrl(training.videoUrl);
+        setWatchUrl(embedUrl);
+        setWatchModalOpen(true);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao abrir vídeo.";
+        notify(message, "error");
+      }
+    },
+    [ensureCompanyContext, notify]
+  );
+
+  const openReports = useCallback(
+    (training: Training) => {
+      try {
+        ensureCompanyContext();
+        navigate(`/relatorios?trainingId=${training.id}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao abrir relatórios.";
+        notify(message, "error");
+      }
+    },
+    [ensureCompanyContext, navigate, notify]
+  );
+
+  const openQuizPlayer = useCallback(
+    async (training: Training) => {
+      setQuizPlayer((prev) => ({
+        ...prev,
+        visible: true,
+        loading: true,
+        training,
+        error: null,
+        quizzes: [],
+        answers: [],
+        selectedQuizId: "",
+        result: null,
+        certificate: null,
+      }));
+
+      try {
+        ensureCompanyContext();
+        const quizzes = await fetchJson<Quiz[]>(`${apiBase}/trainings/${training.id}/quizzes`);
+        if (quizzes.length === 0) {
+          throw new Error("Nenhuma avaliação disponível para este treinamento.");
+        }
+        const firstQuiz = quizzes[0];
+        const answers = new Array(firstQuiz.questions?.length ?? 0).fill(-1);
+        setQuizPlayer((prev) => ({
+          ...prev,
+          loading: false,
+          quizzes,
+          selectedQuizId: firstQuiz.id,
+          answers,
+        }));
+      } catch (error) {
+        console.error("Erro ao abrir prova:", error);
+        const message = error instanceof Error ? error.message : "Erro ao carregar avaliação.";
+        setQuizPlayer((prev) => ({
+          ...prev,
+          loading: false,
+          error: message,
+        }));
+        notify(message, "error");
+      }
+    },
+    [apiBase, ensureCompanyContext, fetchJson, notify]
+  );
+
+  const closeQuizPlayer = useCallback(() => {
+    setQuizPlayer({
+      visible: false,
+      training: null,
+      quizzes: [],
+      selectedQuizId: "",
+      answers: [],
+      loading: false,
+      error: null,
+      submitting: false,
+      result: null,
+      certificate: null,
+    });
+  }, []);
+
+  const handleQuizAnswerChange = useCallback((questionIndex: number, optionIndex: number) => {
+    setQuizPlayer((prev) => ({
+      ...prev,
+      answers: prev.answers.map((answer, index) => (index === questionIndex ? optionIndex : answer)),
+    }));
+  }, []);
+
+  const handleSelectQuiz = useCallback((quizId: string) => {
+    setQuizPlayer((prev) => {
+      const selectedQuiz = prev.quizzes.find((item) => item.id === quizId);
+      const answers = new Array(selectedQuiz?.questions?.length ?? 0).fill(-1);
+
+      return {
+        ...prev,
+        selectedQuizId: quizId,
+        answers,
+        result: null,
+        certificate: null,
+        error: null,
+      };
+    });
+  }, []);
+
+  const handleQuizSubmitAttempt = useCallback(async () => {
+    setQuizPlayer((prev) => ({ ...prev, submitting: true, error: null }));
+    try {
+      ensureCompanyContext();
+      const { selectedQuizId, answers, quizzes, training } = quizPlayer;
+      if (!selectedQuizId || !training) {
+        throw new Error("Quiz não selecionado.");
+      }
+
+      const quiz = quizzes.find((item) => item.id === selectedQuizId);
+      if (!quiz || !quiz.questions) {
+        throw new Error("Avaliação inválida.");
+      }
+
+      if (answers.some((answer) => answer === -1)) {
+        throw new Error("Responda todas as questões antes de enviar.");
+      }
+
+      const result = await fetchJson<{ attempt: QuizAttemptResult; certificate: QuizPlayerState["certificate"] }>(
+        `${apiBase}/quizzes/${selectedQuizId}/attempts`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ answers }),
+        }
+      );
+
+      notify("Avaliação enviada com sucesso!", "success");
+
+      setQuizPlayer((prev) => ({
+        ...prev,
+        submitting: false,
+        result: {
+          id: result.attempt.id,
+          attemptId: result.attempt.attemptId ?? result.attempt.id,
+          score: result.attempt.score,
+          passed: result.attempt.passed,
+          correct: result.attempt.correct,
+          totalQuestions: result.attempt.totalQuestions,
+          completedAt: result.attempt.completedAt,
+        },
+        certificate: result.certificate,
+      }));
+
+      await loadTrainings();
     } catch (error) {
-      console.error("Erro ao carregar provas:", error);
-      setQuizError(error instanceof Error ? error.message : "Erro ao carregar avaliações.");
-    } finally {
-      setQuizLoading(false);
+      const message = error instanceof Error ? error.message : "Erro ao enviar avaliação.";
+      setQuizPlayer((prev) => ({ ...prev, submitting: false, error: message }));
+      notify(message, "error");
     }
-  };
+  }, [apiBase, ensureCompanyContext, fetchJson, loadTrainings, notify, quizPlayer]);
 
   const handleQuizQuestionChange = (index: number, updater: (question: QuizQuestion) => QuizQuestion) => {
     setQuizForm((prev) => {
@@ -419,7 +666,7 @@ export function TrainingPage() {
     setQuizFormError(null);
   };
 
-  const handleQuizSubmit = async (event: React.FormEvent) => {
+  const handleQuizSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (!quizTraining) return;
 
@@ -531,202 +778,383 @@ export function TrainingPage() {
   }
 
   return (
-    <section className="space-y-6">
-      <header className="flex flex-col gap-2">
-        <span className="inline-flex w-fit items-center gap-2 rounded-full bg-primary/10 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
-          <GraduationCap className="h-4 w-4" />
-          Centro de Treinamentos
-        </span>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold text-slate-900">Treinamentos EAD</h1>
-            <p className="text-sm text-slate-500">
-              Vídeos educativos, avaliações e certificados para capacitação contínua.
-            </p>
-          </div>
-          {isAdmin && (
-            <div className="flex flex-col gap-3 text-sm lg:flex-row lg:items-center">
+    <>
+      {watchModalOpen && watchUrl && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 px-4 py-6">
+          <div className="w-full max-w-4xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <h3 className="text-lg font-semibold text-slate-800">Assistir treinamento</h3>
               <button
-                onClick={openCreateModal}
-                className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 font-semibold text-white shadow-elevated transition hover:bg-primary-dark"
+                onClick={() => {
+                  setWatchModalOpen(false);
+                  setWatchUrl(null);
+                }}
+                className="grid h-10 w-10 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100"
               >
-                <Plus className="h-4 w-4" />
-                Novo Treinamento
+                <span className="sr-only">Fechar</span>
+                ×
               </button>
             </div>
-          )}
-        </div>
-      </header>
-
-      {/* Estatísticas */}
-      <div className="grid gap-4 lg:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-elevated">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total</p>
-          <p className="mt-2 text-2xl font-semibold text-slate-900">{trainings.length}</p>
-          <p className="mt-3 text-xs text-slate-500">Treinamentos disponíveis</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-elevated">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ativos</p>
-          <p className="mt-2 text-2xl font-semibold text-emerald-600">
-            {trainings.filter((t) => t.isActive).length}
-          </p>
-          <p className="mt-3 text-xs text-slate-500">Disponíveis para acesso</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-elevated">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Alunos</p>
-          <p className="mt-2 text-2xl font-semibold text-blue-600">
-            {trainings.reduce((sum, t) => sum + (t._count?.userProgress || 0), 0)}
-          </p>
-          <p className="mt-3 text-xs text-slate-500">Total de matrículas</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-elevated">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Certificados</p>
-          <p className="mt-2 text-2xl font-semibold text-purple-600">
-            {trainings.reduce((sum, t) => sum + (t._count?.certificates || 0), 0)}
-          </p>
-          <p className="mt-3 text-xs text-slate-500">Certificados emitidos</p>
-        </div>
-      </div>
-
-      {/* Lista de Treinamentos */}
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-elevated">
-        <div className="mb-6 flex flex-col gap-3 border-b border-slate-200 pb-6 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-800">Todos os Treinamentos</h2>
-            <p className="text-sm text-slate-500">
-              {isAdmin 
-                ? "Gerencie vídeos, avaliações e certificados."
-                : "Acesse os vídeos e complete as avaliações."
-              }
-            </p>
+            <div className="aspect-video bg-black">
+              <iframe src={watchUrl} title="Treinamento" className="h-full w-full" allowFullScreen />
+            </div>
           </div>
         </div>
+      )}
 
-        {trainings.length === 0 ? (
-          <div className="text-center py-12">
-            <GraduationCap className="mx-auto h-16 w-16 text-slate-300" />
-            <h3 className="mt-4 text-lg font-semibold text-slate-800">
-              {isAdmin ? "Nenhum treinamento criado" : "Nenhum treinamento disponível"}
-            </h3>
-            <p className="mt-2 text-sm text-slate-500">
-              {isAdmin 
-                ? "Crie seu primeiro treinamento para começar."
-                : "Volte em breve para novos conteúdos."
-              }
-            </p>
-            {isAdmin && (
+      {quizPlayer.visible && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/70 px-4 py-6">
+          <div className="w-full max-w-4xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">
+                  {quizPlayer.training ? `Prova · ${quizPlayer.training.title}` : "Prova"}
+                </h3>
+                <p className="text-sm text-slate-500">Responda todas as questões e envie para concluir.</p>
+              </div>
               <button
-                onClick={() => setShowCreateModal(true)}
-                className="mt-4 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark"
+                onClick={closeQuizPlayer}
+                className="grid h-10 w-10 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100"
               >
-                <Plus className="h-4 w-4" />
-                Criar Treinamento
+                <span className="sr-only">Fechar</span>
+                ×
               </button>
+            </div>
+
+            <div className="max-h-[70vh] overflow-y-auto px-6 py-6">
+              {quizPlayer.loading ? (
+                <p className="text-sm text-slate-500">Carregando avaliação...</p>
+              ) : quizPlayer.error ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                  {quizPlayer.error}
+                </div>
+              ) : quizPlayer.result ? (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-slate-700">
+                    <h4 className="text-lg font-semibold text-emerald-700">Resultado da avaliação</h4>
+                    <p className="mt-2 text-sm">
+                      Pontuação: <span className="font-semibold">{quizPlayer.result.score}%</span> · {quizPlayer.result.correct} de {quizPlayer.result.totalQuestions} questões corretas.
+                    </p>
+                    <p className="mt-1 text-sm">
+                      Status: {quizPlayer.result.passed ? (
+                        <span className="font-semibold text-emerald-700">Aprovado</span>
+                      ) : (
+                        <span className="font-semibold text-red-600">Reprovado</span>
+                      )}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Concluído em {new Date(quizPlayer.result.completedAt).toLocaleString("pt-BR")}
+                    </p>
+                  </div>
+
+                  {quizPlayer.certificate && (
+                    <a
+                      href={quizPlayer.certificate.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark"
+                    >
+                      Baixar certificado
+                    </a>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => {
+                        if (quizPlayer.training) {
+                          openQuizPlayer(quizPlayer.training);
+                        }
+                      }}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                    >
+                      Refazer avaliação
+                    </button>
+                    <button
+                      onClick={closeQuizPlayer}
+                      className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {quizPlayer.quizzes.length > 1 && (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Escolha a avaliação
+                      </label>
+                      <select
+                        value={quizPlayer.selectedQuizId}
+                        onChange={(event) => handleSelectQuiz(event.target.value)}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                      >
+                        {quizPlayer.quizzes.map((quiz) => (
+                          <option key={quiz.id} value={quiz.id}>
+                            {quiz.title}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {(() => {
+                    const activeQuiz = quizPlayer.quizzes.find((quiz) => quiz.id === quizPlayer.selectedQuizId);
+                    if (!activeQuiz || !activeQuiz.questions?.length) {
+                      return <p className="text-sm text-slate-500">Nenhuma questão disponível para este treinamento.</p>;
+                    }
+
+                    return (
+                      <div className="space-y-6">
+                        {activeQuiz.questions.map((question, questionIndex) => (
+                          <div key={questionIndex} className="rounded-2xl border border-slate-200 p-4">
+                            <p className="text-sm font-semibold text-slate-700">
+                              {questionIndex + 1}. {question.prompt}
+                            </p>
+                            <div className="mt-3 space-y-2">
+                              {question.options.map((option, optionIndex) => (
+                                <label
+                                  key={optionIndex}
+                                  className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${quizPlayer.answers[questionIndex] === optionIndex ? "border-primary bg-primary/5" : "border-slate-200 hover:bg-slate-50"}`}
+                                >
+                                  <input
+                                    type="radio"
+                                    name={`question-${questionIndex}`}
+                                    className="h-4 w-4"
+                                    checked={quizPlayer.answers[questionIndex] === optionIndex}
+                                    onChange={() => handleQuizAnswerChange(questionIndex, optionIndex)}
+                                  />
+                                  <span className="flex-1 text-slate-700">{option}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <button
+                      onClick={closeQuizPlayer}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                      type="button"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleQuizSubmitAttempt}
+                      disabled={quizPlayer.submitting}
+                      className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-70"
+                      type="button"
+                    >
+                      {quizPlayer.submitting ? "Enviando..." : "Enviar respostas"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <section className="space-y-6">
+        <header className="flex flex-col gap-2">
+          <span className="inline-flex w-fit items-center gap-2 rounded-full bg-primary/10 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
+            <GraduationCap className="h-4 w-4" />
+            Centro de Treinamentos
+          </span>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h1 className="text-3xl font-semibold text-slate-900">Treinamentos EAD</h1>
+              <p className="text-sm text-slate-500">
+                Vídeos educativos, avaliações e certificados para capacitação contínua.
+              </p>
+            </div>
+            {isAdmin && (
+              <div className="flex flex-col gap-3 text-sm lg:flex-row lg:items-center">
+                <button
+                  onClick={openCreateModal}
+                  className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 font-semibold text-white shadow-elevated transition hover:bg-primary-dark"
+                >
+                  <Plus className="h-4 w-4" />
+                  Novo Treinamento
+                </button>
+              </div>
             )}
           </div>
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {trainings.map((training) => (
-              <div
-                key={training.id}
-                className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:shadow-elevated hover:border-primary/20"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-lg font-semibold text-slate-800 group-hover:text-primary">
-                        {training.title}
-                      </h3>
-                      {training.isActive ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">
-                          <CheckCircle className="h-3 w-3" />
-                          Ativo
+        </header>
+
+        <div className="grid gap-4 lg:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-elevated">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total</p>
+            <p className="mt-2 text-2xl font-semibold text-slate-900">{trainings.length}</p>
+            <p className="mt-3 text-xs text-slate-500">Treinamentos disponíveis</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-elevated">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ativos</p>
+            <p className="mt-2 text-2xl font-semibold text-emerald-600">
+              {trainings.filter((t) => t.isActive).length}
+            </p>
+            <p className="mt-3 text-xs text-slate-500">Disponíveis para acesso</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-elevated">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Alunos</p>
+            <p className="mt-2 text-2xl font-semibold text-blue-600">
+              {trainings.reduce((sum, t) => sum + (t._count?.userProgress || 0), 0)}
+            </p>
+            <p className="mt-3 text-xs text-slate-500">Total de matrículas</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-elevated">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Certificados</p>
+            <p className="mt-2 text-2xl font-semibold text-purple-600">
+              {trainings.reduce((sum, t) => sum + (t._count?.certificates || 0), 0)}
+            </p>
+            <p className="mt-3 text-xs text-slate-500">Certificados emitidos</p>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-elevated">
+          <div className="mb-6 flex flex-col gap-3 border-b border-slate-200 pb-6 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Todos os Treinamentos</h2>
+              <p className="text-sm text-slate-500">
+                {isAdmin
+                  ? "Gerencie vídeos, avaliações e certificados."
+                  : "Acesse os vídeos e complete as avaliações."}
+              </p>
+            </div>
+          </div>
+
+          {trainings.length === 0 ? (
+            <div className="py-12 text-center">
+              <GraduationCap className="mx-auto h-16 w-16 text-slate-300" />
+              <h3 className="mt-4 text-lg font-semibold text-slate-800">
+                {isAdmin ? "Nenhum treinamento criado" : "Nenhum treinamento disponível"}
+              </h3>
+              <p className="mt-2 text-sm text-slate-500">
+                {isAdmin
+                  ? "Crie seu primeiro treinamento para começar."
+                  : "Volte em breve para novos conteúdos."}
+              </p>
+              {isAdmin && (
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="mt-4 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark"
+                >
+                  <Plus className="h-4 w-4" />
+                  Criar Treinamento
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {trainings.map((training) => (
+                <div
+                  key={training.id}
+                  className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-primary/20 hover:shadow-elevated"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-semibold text-slate-800 group-hover:text-primary">
+                          {training.title}
+                        </h3>
+                        {training.isActive ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-700">
+                            <CheckCircle className="h-3 w-3" />
+                            Ativo
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+                            <Clock className="h-3 w-3" />
+                            Inativo
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-2 text-sm text-slate-600 line-clamp-2">{training.description}</p>
+
+                      <div className="mt-4 aspect-video overflow-hidden rounded-lg bg-slate-100">
+                        <iframe
+                          src={getEmbedUrl(training.videoUrl)}
+                          title={training.title}
+                          className="h-full w-full"
+                          allowFullScreen
+                        />
+                      </div>
+
+                      <div className="mt-4 flex items-center gap-4 text-xs text-slate-500">
+                        <span className="inline-flex items-center gap-1">
+                          <Users className="h-3 w-3" />
+                          {training._count?.userProgress || 0} alunos
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+                        <span className="inline-flex items-center gap-1">
+                          <Award className="h-3 w-3" />
+                          {training._count?.certificates || 0} certificados
+                        </span>
+                        <span className="inline-flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          Inativo
+                          {formatDate(training.createdAt)}
                         </span>
-                      )}
-                    </div>
-                    <p className="mt-2 text-sm text-slate-600 line-clamp-2">
-                      {training.description}
-                    </p>
-                    
-                    {/* Preview do vídeo */}
-                    <div className="mt-4 aspect-video overflow-hidden rounded-lg bg-slate-100">
-                      <iframe
-                        src={getEmbedUrl(training.videoUrl)}
-                        title={training.title}
-                        className="h-full w-full"
-                        allowFullScreen
-                      />
-                    </div>
+                      </div>
 
-                    {/* Estatísticas */}
-                    <div className="mt-4 flex items-center gap-4 text-xs text-slate-500">
-                      <span className="inline-flex items-center gap-1">
-                        <Users className="h-3 w-3" />
-                        {training._count?.userProgress || 0} alunos
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <Award className="h-3 w-3" />
-                        {training._count?.certificates || 0} certificados
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {formatDate(training.createdAt)}
-                      </span>
-                    </div>
-
-                    {/* Ações */}
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white transition hover:bg-primary-dark">
-                        <Play className="h-3 w-3" />
-                        Assistir
-                      </button>
-                      <button className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50">
-                        <FileText className="h-3 w-3" />
-                        Prova
-                      </button>
-                      {isAdmin && (
-                        <>
-                          <button className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50">
-                            <Eye className="h-3 w-3" />
-                            Relatórios
-                          </button>
-                          <button
-                            onClick={() => openQuizModal(training)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
-                          >
-                            <FileText className="h-3 w-3" />
-                            Gerenciar provas
-                          </button>
-                          <button
-                            onClick={() => openEditModal(training)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
-                          >
-                            <Edit className="h-3 w-3" />
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => handleDelete(training)}
-                            disabled={isDeleting === training.id}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                            {isDeleting === training.id ? "Excluindo..." : "Excluir"}
-                          </button>
-                        </>
-                      )}
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          onClick={() => openWatchModal(training)}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white transition hover:bg-primary-dark"
+                        >
+                          <Play className="h-3 w-3" />
+                          Assistir
+                        </button>
+                        <button
+                          onClick={() => openQuizPlayer(training)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                        >
+                          <FileText className="h-3 w-3" />
+                          Prova
+                        </button>
+                        {isAdmin && (
+                          <>
+                            <button
+                              onClick={() => openReports(training)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                            >
+                              <Eye className="h-3 w-3" />
+                              Relatórios
+                            </button>
+                            <button
+                              onClick={() => openQuizModal(training)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                            >
+                              <FileText className="h-3 w-3" />
+                              Gerenciar provas
+                            </button>
+                            <button
+                              onClick={() => openEditModal(training)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                            >
+                              <Edit className="h-3 w-3" />
+                              Editar
+                            </button>
+                            <button
+                              onClick={() => handleDelete(training)}
+                              disabled={isDeleting === training.id}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              {isDeleting === training.id ? "Excluindo..." : "Excluir"}
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
 
       {isAdmin && showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-6">
@@ -737,9 +1165,7 @@ export function TrainingPage() {
                   {selectedTraining ? "Editar Treinamento" : "Novo Treinamento"}
                 </h3>
                 <p className="text-sm text-slate-500">
-                  {selectedTraining
-                    ? "Atualize as informações do treinamento."
-                    : "Cadastre um novo vídeo de treinamento."}
+                  {selectedTraining ? "Atualize as informações do treinamento." : "Cadastre um novo vídeo de treinamento."}
                 </p>
               </div>
               <button
@@ -796,9 +1222,7 @@ export function TrainingPage() {
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   required
                 />
-                <p className="text-xs text-slate-500">
-                  Aceitamos URLs do YouTube ou links diretos para vídeos hospedados.
-                </p>
+                <p className="text-xs text-slate-500">Aceitamos URLs do YouTube ou links diretos para vídeos hospedados.</p>
               </div>
 
               <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -818,9 +1242,7 @@ export function TrainingPage() {
               </div>
 
               {errorMessage && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
-                  {errorMessage}
-                </div>
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{errorMessage}</div>
               )}
 
               <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-end">
@@ -875,9 +1297,7 @@ export function TrainingPage() {
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Avaliações existentes</h4>
                   <button
-                    onClick={() => {
-                      openNewQuizForm();
-                    }}
+                    onClick={openNewQuizForm}
                     className="inline-flex items-center gap-2 rounded-full border border-primary bg-white px-3 py-1 text-xs font-semibold text-primary transition hover:bg-primary/10"
                   >
                     <Plus className="h-3 w-3" /> Nova avaliação
@@ -887,9 +1307,7 @@ export function TrainingPage() {
                 {quizLoading ? (
                   <p className="text-sm text-slate-500">Carregando avaliações...</p>
                 ) : quizError ? (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-                    {quizError}
-                  </div>
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{quizError}</div>
                 ) : quizzes.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
                     Nenhuma avaliação cadastrada ainda.
@@ -1049,10 +1467,10 @@ export function TrainingPage() {
                                 name={`correct-${questionIndex}`}
                                 checked={question.correctOptionIndex === optionIndex}
                                 onChange={() => selectCorrectOption(questionIndex, optionIndex)}
-                                className="h-4 w-4" 
+                                className="h-4 w-4"
                               />
                               <input
-                                value= {option}
+                                value={option}
                                 onChange={(event) => handleQuizOptionChange(questionIndex, optionIndex, event.target.value)}
                                 className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                                 placeholder={`Alternativa ${optionIndex + 1}`}
@@ -1081,9 +1499,7 @@ export function TrainingPage() {
                   </div>
 
                   {quizFormError && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
-                      {quizFormError}
-                    </div>
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{quizFormError}</div>
                   )}
 
                   <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
@@ -1109,6 +1525,6 @@ export function TrainingPage() {
           </div>
         </div>
       )}
-    </section>
+    </>
   );
 }
