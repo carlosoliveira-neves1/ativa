@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   GraduationCap,
   Play,
@@ -76,7 +76,10 @@ function formatStatusLabel(status: UserProgress["status"]) {
 }
 
 export function TrainingPage() {
-  const user = useAuthStore((state) => state.user);
+  const { user, token } = useAuthStore((state) => ({
+    user: state.user,
+    token: state.token,
+  }));
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -112,6 +115,11 @@ export function TrainingPage() {
   const [quizFormError, setQuizFormError] = useState<string | null>(null);
   const [quizDeletingId, setQuizDeletingId] = useState<string | null>(null);
 
+  const apiBase = useMemo(() => {
+    const raw = import.meta.env.VITE_API_URL ?? (typeof window !== "undefined" ? window.location.origin : "");
+    return raw.replace(/\/$/, "");
+  }, []);
+
   useEffect(() => {
     setIsAdmin(user?.role === "ADMIN_GLOBAL" || user?.role === "COMPANY_ADMIN");
     loadTrainings();
@@ -119,10 +127,13 @@ export function TrainingPage() {
 
   const loadTrainings = async () => {
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`${import.meta.env.VITE_API_URL || ""}/trainings`, {
+      const sessionToken = token ?? localStorage.getItem("token");
+      if (!sessionToken) {
+        throw new Error("Sessão expirada. Faça login novamente.");
+      }
+      const response = await fetch(`${apiBase}/trainings`, {
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${sessionToken}`,
         },
       });
 
@@ -173,7 +184,10 @@ export function TrainingPage() {
         return;
       }
 
-      const token = localStorage.getItem("token");
+      const sessionToken = token ?? localStorage.getItem("token");
+      if (!sessionToken) {
+        throw new Error("Sessão expirada. Faça login novamente.");
+      }
       const payload = {
         title: formTitle.trim(),
         description: formDescription.trim(),
@@ -182,16 +196,14 @@ export function TrainingPage() {
       };
 
       const isEditing = Boolean(selectedTraining);
-      const url = `${import.meta.env.VITE_API_URL || ""}/trainings${
-        isEditing ? `/${selectedTraining!.id}` : ""
-      }`;
+      const url = `${apiBase}/trainings${isEditing ? `/${selectedTraining!.id}` : ""}`;
       const method = isEditing ? "PUT" : "POST";
 
       const response = await fetch(url, {
         method,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${sessionToken}`,
         },
         body: JSON.stringify(payload),
       });
@@ -219,11 +231,14 @@ export function TrainingPage() {
 
     setIsDeleting(training.id);
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`${import.meta.env.VITE_API_URL || ""}/trainings/${training.id}`, {
+      const sessionToken = token ?? localStorage.getItem("token");
+      if (!sessionToken) {
+        throw new Error("Sessão expirada. Faça login novamente.");
+      }
+      const response = await fetch(`${apiBase}/trainings/${training.id}`, {
         method: "DELETE",
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${sessionToken}`,
         },
       });
 
@@ -281,10 +296,13 @@ export function TrainingPage() {
     setQuizLoading(true);
 
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`${import.meta.env.VITE_API_URL || ""}/trainings/${training.id}/quizzes`, {
+      const sessionToken = token ?? localStorage.getItem("token");
+      if (!sessionToken) {
+        throw new Error("Sessão expirada. Faça login novamente.");
+      }
+      const response = await fetch(`${apiBase}/trainings/${training.id}/quizzes`, {
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${sessionToken}`,
         },
       });
 
@@ -433,18 +451,21 @@ export function TrainingPage() {
         })),
       };
 
-      const token = localStorage.getItem("token");
+      const sessionToken = token ?? localStorage.getItem("token");
+      if (!sessionToken) {
+        throw new Error("Sessão expirada. Faça login novamente.");
+      }
       const isEditing = Boolean(quizForm.id);
       const url = isEditing
-        ? `${import.meta.env.VITE_API_URL || ""}/quizzes/${quizForm.id}`
-        : `${import.meta.env.VITE_API_URL || ""}/trainings/${quizTraining.id}/quizzes`;
+        ? `${apiBase}/quizzes/${quizForm.id}`
+        : `${apiBase}/trainings/${quizTraining.id}/quizzes`;
       const method = isEditing ? "PUT" : "POST";
 
       const response = await fetch(url, {
         method,
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${sessionToken}`,
         },
         body: JSON.stringify(payload),
       });
@@ -473,11 +494,14 @@ export function TrainingPage() {
 
     setQuizDeletingId(quiz.id);
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`${import.meta.env.VITE_API_URL || ""}/quizzes/${quiz.id}`, {
+      const sessionToken = token ?? localStorage.getItem("token");
+      if (!sessionToken) {
+        throw new Error("Sessão expirada. Faça login novamente.");
+      }
+      const response = await fetch(`${apiBase}/quizzes/${quiz.id}`, {
         method: "DELETE",
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${sessionToken}`,
         },
       });
 
