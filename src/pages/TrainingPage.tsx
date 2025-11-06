@@ -76,6 +76,12 @@ interface QuizAttemptResult {
   completedAt: string;
 }
 
+interface CertificateResponse {
+  id: string;
+  certificateUrl: string;
+  issuedAt: string;
+}
+
 interface QuizPlayerState {
   visible: boolean;
   training: Training | null;
@@ -425,7 +431,12 @@ export function TrainingPage() {
     (training: Training) => {
       try {
         ensureCompanyContext();
-        navigate(`/relatorios?trainingId=${training.id}`);
+        navigate(`/relatorios?trainingId=${training.id}`, {
+          state: {
+            trainingId: training.id,
+            trainingTitle: training.title,
+          },
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro ao abrir relatórios.";
         notify(message, "error");
@@ -534,7 +545,7 @@ export function TrainingPage() {
         throw new Error("Responda todas as questões antes de enviar.");
       }
 
-      const result = await fetchJson<{ attempt: QuizAttemptResult; certificate: QuizPlayerState["certificate"] }>(
+      const result = await fetchJson<{ attempt: QuizAttemptResult; certificate: CertificateResponse | null }>(
         `${apiBase}/quizzes/${selectedQuizId}/attempts`,
         {
           method: "POST",
@@ -557,7 +568,13 @@ export function TrainingPage() {
           totalQuestions: result.attempt.totalQuestions,
           completedAt: result.attempt.completedAt,
         },
-        certificate: result.certificate,
+        certificate: result.certificate
+          ? {
+              id: result.certificate.id,
+              url: result.certificate.certificateUrl,
+              issuedAt: result.certificate.issuedAt,
+            }
+          : null,
       }));
 
       await loadTrainings();
