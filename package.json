@@ -9,7 +9,7 @@
     "server": "node server/index.js",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "render:setup": "prisma generate && prisma db push --accept-data-loss",
+    "render:setup": "prisma generate",
     "test:email": "node server/test-email.js",
     "test:ai": "node server/test-huggingface.js",
     "test:groq": "node server/test-groq.js",
