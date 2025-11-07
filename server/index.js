@@ -9,6 +9,8 @@ import ExcelJS from "exceljs";
 import multer from "multer";
 import { generateCompanyInsights, isAiConfigured } from "./services/aiSuggestions.js";
 import { sendWelcomeEmail, sendPasswordResetEmail, sendQuestionnaireInvitationEmail, isEmailConfigured } from "./services/emailService.js";
+import { createCertificatePdf } from "./services/certificateService.js";
+import stream from "node:stream";
 
 const prisma = new PrismaClient({
   log: ['error', 'warn'],
@@ -2494,6 +2496,142 @@ app.post("/quizzes/:quizId/attempts", authenticate, async (req, res) => {
     console.error("Failed to submit quiz attempt", error);
     const message = error instanceof Error ? error.message : "Failed to submit quiz attempt";
     res.status(400).json({ message });
+  }
+});
+
+app.get("/certificates/:certificateId/download", authenticate, async (req, res) => {
+  try {
+    const { certificateId } = req.params;
+
+    const certificate = await prisma.certificate.findUnique({
+      where: { id: certificateId },
+      include: {
+        user: true,
+        training: true,
+        quiz: true,
+      },
+    });
+
+    if (!certificate) {
+      return res.status(404).json({ message: "Certificado não encontrado" });
+    }
+
+    const company = certificate.user.companyId
+      ? await prisma.company.findUnique({ where: { id: certificate.user.companyId } })
+      : null;
+
+    const isAdminGlobal = req.auth.role === UserRole.ADMIN_GLOBAL;
+    const isSameUser = certificate.userId === req.auth.userId;
+    const isSameCompany = company && req.auth.companyId && company.id === req.auth.companyId;
+
+    if (!isAdminGlobal && !isSameUser && !isSameCompany) {
+      return res.status(403).json({ message: "Acesso negado" });
+    }
+
+    const attempt = await prisma.quizAttempt.findFirst({
+      where: {
+        quizId: certificate.quizId,
+        userId: certificate.userId,
+        passed: true,
+      },
+      orderBy: { completedAt: "desc" },
+    });
+
+    if (!attempt) {
+      return res.status(404).json({ message: "Tentativa aprovada não encontrada" });
+    }
+
+    const doc = createCertificatePdf({
+      user: certificate.user,
+      training: certificate.training,
+      quiz: certificate.quiz,
+      attempt: {
+        score: attempt.score,
+        totalQuestions: Array.isArray(attempt.answers) ? attempt.answers.length : certificate.quiz.questions.length,
+        completedAt: attempt.completedAt,
+      },
+      company,
+    });
+
+    const sanitizedStudent = certificate.user.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+    const sanitizedTraining = certificate.training.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+    const filename = `certificado-${sanitizedStudent}-${sanitizedTraining}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=\"${filename}\"`);
+
+    const passThrough = new stream.PassThrough();
+    doc.pipe(passThrough);
+    passThrough.pipe(res);
+    doc.end();
+  } catch (error) {
+    console.error("Failed to generate certificate PDF", error);
+    res.status(500).json({ message: "Erro ao gerar certificado" });
+  }
+});
+
+app.get("/certificates/:certificateId/download", authenticate, async (req, res) => {
+  try {
+    const { certificateId } = req.params;
+
+    const certificate = await prisma.certificate.findUnique({
+      where: { id: certificateId },
+      include: {
+        user: true,
+        training: true,
+        quiz: true,
+      },
+    });
+
+    if (!certificate) {
+      return res.status(404).json({ message: "Certificado não encontrado" });
+    }
+
+    if (
+      req.auth.role !== UserRole.ADMIN_GLOBAL &&
+      certificate.userId !== req.auth.userId &&
+      (!req.auth.companyId || certificate.user.companyId !== req.auth.companyId)
+    ) {
+      return res.status(403).json({ message: "Acesso negado" });
+    }
+
+    let lastAttempt = await prisma.quizAttempt.findFirst({
+      where: {
+        quizId: certificate.quizId,
+        userId: certificate.userId,
+        passed: true,
+      },
+      orderBy: { completedAt: "desc" },
+    });
+
+    if (!lastAttempt) {
+      return res.status(404).json({ message: "Tentativa aprovada não encontrada" });
+    }
+
+    const doc = createCertificatePdf({
+      user: certificate.user,
+      training: certificate.training,
+      quiz: certificate.quiz,
+      attempt: {
+        score: lastAttempt.score,
+        totalQuestions: Array.isArray(lastAttempt.answers) ? lastAttempt.answers.length : certificate.quiz.questions.length,
+        completedAt: lastAttempt.completedAt,
+      },
+      company: certificate.user.companyId
+        ? await prisma.company.findUnique({ where: { id: certificate.user.companyId } })
+        : null,
+    });
+
+    const filename = `certificado-${certificate.user.name.replace(/\s+/g, "-").toLowerCase()}-${certificate.training.title.replace(/\s+/g, "-").toLowerCase()}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=\"${filename}\"`);
+
+    doc.pipe(res);
+    doc.end();
+  } catch (error) {
+    console.error("Failed to generate certificate PDF", error);
+    res.status(500).json({ message: "Erro ao gerar certificado" });
   }
 });
 

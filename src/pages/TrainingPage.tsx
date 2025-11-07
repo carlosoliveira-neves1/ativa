@@ -178,6 +178,11 @@ export function TrainingPage() {
     return raw.replace(/\/$/, "");
   }, []);
 
+  const buildCertificateDownloadUrl = useCallback(
+    (certificateId: string) => `${apiBase}/certificates/${certificateId}/download`,
+    [apiBase]
+  );
+
   const userRole = user?.role;
   const isAdmin = userRole === "ADMIN_GLOBAL" || userRole === "COMPANY_ADMIN";
   const isAdminGlobal = userRole === "ADMIN_GLOBAL";
@@ -198,8 +203,25 @@ export function TrainingPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        setTrainings(data);
+        const data = (await response.json()) as Training[];
+        const normalized = data.map((training) => {
+          const certificate = training.userProgress?.certificate;
+          if (!certificate) {
+            return training;
+          }
+
+          return {
+            ...training,
+            userProgress: {
+              ...training.userProgress,
+              certificate: {
+                ...certificate,
+                url: buildCertificateDownloadUrl(certificate.id),
+              },
+            },
+          };
+        });
+        setTrainings(normalized);
       } else {
         const data = await response.json().catch(() => ({ message: "Erro ao carregar treinamentos." }));
         throw new Error(data.message || "Erro ao carregar treinamentos.");
@@ -210,7 +232,7 @@ export function TrainingPage() {
     } finally {
       setLoading(false);
     }
-  }, [apiBase, isAdminGlobal, notify, selectedCompanyId, token]);
+  }, [apiBase, buildCertificateDownloadUrl, isAdminGlobal, notify, selectedCompanyId, token]);
 
   useEffect(() => {
     loadTrainings();
@@ -571,7 +593,7 @@ export function TrainingPage() {
         certificate: result.certificate
           ? {
               id: result.certificate.id,
-              url: result.certificate.certificateUrl,
+              url: buildCertificateDownloadUrl(result.certificate.id),
               issuedAt: result.certificate.issuedAt,
             }
           : null,
@@ -583,7 +605,7 @@ export function TrainingPage() {
       setQuizPlayer((prev) => ({ ...prev, submitting: false, error: message }));
       notify(message, "error");
     }
-  }, [apiBase, ensureCompanyContext, fetchJson, loadTrainings, notify, quizPlayer]);
+  }, [apiBase, buildCertificateDownloadUrl, ensureCompanyContext, fetchJson, loadTrainings, notify, quizPlayer]);
 
   const handleQuizQuestionChange = (index: number, updater: (question: QuizQuestion) => QuizQuestion) => {
     setQuizForm((prev) => {
