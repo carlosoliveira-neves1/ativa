@@ -9,11 +9,14 @@ export function createCertificatePdf({ user, training, quiz, attempt, company })
   const doc = new PDFDocument({ size: "A4", margin: 50 });
 
   doc.info = {
-    Title: "Certificado de Conclusão",
-    Author: company?.nomeFantasia ?? "Ativa Treinamentos",
-    Subject: training.title,
-    Creator: "Plataforma NR-1 Ativa",
+    Title: String("Certificado de Conclusão"),
+    Author: String(company?.nomeFantasia ?? "Ativa Treinamentos"),
+    Subject: String(training.title ?? ""),
+    Creator: String("Plataforma NR-1 Ativa"),
   };
+  const issuedAt = attempt.completedAt ? new Date(attempt.completedAt) : new Date();
+  doc.info.CreationDate = issuedAt;
+  doc.info.ModDate = issuedAt;
 
   doc.rect(40, 40, doc.page.width - 80, doc.page.height - 80).stroke("#0f172a");
 
