@@ -2346,8 +2346,23 @@ function calculateQuizScore(quiz, answers) {
   return { score, correct, totalQuestions, passed };
 }
 
+function resolveFrontendBaseUrl() {
+  const candidates = [
+    process.env.CERTIFICATE_BASE_URL,
+    process.env.FRONTEND_URL,
+    process.env.APP_BASE_URL,
+    process.env.PUBLIC_FRONTEND_URL,
+  ];
+
+  const base = candidates.find((value) => typeof value === "string" && value.trim().length > 0);
+  const fallback = "https://ativa-nr1.vercel.app";
+
+  return (base ?? fallback).replace(/\/$/, "");
+}
+
 function buildCertificateUrl({ quizId, trainingId, userId }) {
-  return `${process.env.FRONTEND_URL ?? "https://app"}/certificados/${trainingId}/${quizId}/${userId}`;
+  const baseUrl = resolveFrontendBaseUrl();
+  return `${baseUrl}/certificados/${trainingId}/${quizId}/${userId}`;
 }
 
 app.post("/quizzes/:quizId/attempts", authenticate, async (req, res) => {
