@@ -25,6 +25,10 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "15mb" }));
 
+app.get("/favicon.ico", (req, res) => {
+  res.status(204).end();
+});
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
