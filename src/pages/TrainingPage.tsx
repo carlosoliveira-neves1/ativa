@@ -165,6 +165,7 @@ export function TrainingPage() {
     result: null,
     certificate: null,
   });
+  const [certificateDownloading, setCertificateDownloading] = useState(false);
 
   const notify = useCallback(
     (message: string, type: "success" | "error" | "info" = "info") => {
@@ -611,6 +612,72 @@ export function TrainingPage() {
     }
   }, [apiBase, buildCertificateDownloadUrl, ensureCompanyContext, fetchJson, loadTrainings, notify, quizPlayer]);
 
+  const downloadCertificate = useCallback(
+    async (certificateId: string, suggestedName?: string) => {
+      const sessionToken = token ?? localStorage.getItem("token");
+      if (!sessionToken) {
+        throw new Error("Sessão expirada. Faça login novamente.");
+      }
+
+      const headers = new Headers();
+      headers.set("Authorization", `Bearer ${sessionToken}`);
+      if (isAdminGlobal && selectedCompanyId) {
+        headers.set("x-company-id", selectedCompanyId);
+      }
+
+      const response = await fetch(`${apiBase}/certificates/${certificateId}/download`, {
+        headers,
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        const message =
+          data && typeof data === "object" && "message" in data && typeof data.message === "string"
+            ? data.message
+            : "Erro ao baixar certificado.";
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const filenameBase = suggestedName
+        ? suggestedName
+        : `certificado-${certificateId}`;
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = filenameBase.endsWith(".pdf") ? filenameBase : `${filenameBase}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    },
+    [apiBase, isAdminGlobal, selectedCompanyId, token]
+  );
+
+  const handleCertificateDownload = useCallback(async () => {
+    if (!quizPlayer.certificate) {
+      return;
+    }
+
+    const baseName = quizPlayer.training?.title ?? quizPlayer.certificate.id;
+    const sanitized = baseName
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-_]/g, "");
+
+    try {
+      setCertificateDownloading(true);
+      await downloadCertificate(quizPlayer.certificate.id, sanitized || undefined);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao baixar certificado.";
+      notify(message, "error");
+    } finally {
+      setCertificateDownloading(false);
+    }
+  }, [downloadCertificate, notify, quizPlayer.certificate, quizPlayer.training]);
+
   const handleQuizQuestionChange = (index: number, updater: (question: QuizQuestion) => QuizQuestion) => {
     setQuizForm((prev) => {
       const questions = [...prev.questions];
@@ -891,14 +958,14 @@ export function TrainingPage() {
                   </div>
 
                   {quizPlayer.certificate && (
-                    <a
-                      href={quizPlayer.certificate.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark"
+                    <button
+                      type="button"
+                      onClick={handleCertificateDownload}
+                      disabled={certificateDownloading}
+                      className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-70"
                     >
-                      Baixar certificado
-                    </a>
+                      {certificateDownloading ? "Baixando..." : "Baixar certificado"}
+                    </button>
                   )}
 
                   <div className="flex flex-wrap gap-2">
