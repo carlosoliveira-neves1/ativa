@@ -205,21 +205,25 @@ export function TrainingPage() {
       if (response.ok) {
         const data = (await response.json()) as Training[];
         const normalized = data.map((training) => {
-          const certificate = training.userProgress?.certificate;
-          if (!certificate) {
+          const userProgress = training.userProgress;
+          if (!userProgress?.certificate) {
             return training;
           }
 
+          const updatedCertificate = {
+            ...userProgress.certificate,
+            url: buildCertificateDownloadUrl(userProgress.certificate.id),
+          };
+
+          const updatedUserProgress: UserProgress = {
+            ...userProgress,
+            certificate: updatedCertificate,
+          };
+
           return {
             ...training,
-            userProgress: {
-              ...training.userProgress,
-              certificate: {
-                ...certificate,
-                url: buildCertificateDownloadUrl(certificate.id),
-              },
-            },
-          };
+            userProgress: updatedUserProgress,
+          } satisfies Training;
         });
         setTrainings(normalized);
       } else {
