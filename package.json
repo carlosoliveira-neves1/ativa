@@ -15,6 +15,7 @@
     "test:groq": "node server/test-groq.js",
     "delete:user": "node server/delete-user.js",
     "create:admin": "node server/create-admin.js",
+    "create:company-user": "node server/create-company-user.js",
     "list-admins": "node server/list-admins.js",
     "reset-admin-password": "node server/reset-admin-password.js"
   },
