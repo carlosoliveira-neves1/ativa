@@ -211,7 +211,7 @@ export function LoginPage() {
             </Link>
           </div>
 
-          <div className="border-t border-slate-200 pt-4 text-center">
+          <div className="border-t border-slate-200 pt-4 text-center hidden">
             <p className="text-sm text-slate-600">
               Não tem uma conta?{" "}
               <Link to="/signup" className="font-semibold text-primary hover:underline">

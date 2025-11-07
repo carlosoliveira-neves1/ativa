@@ -18,13 +18,14 @@ enum UserRole {
 }
 
 model Company {
-  id           String             @id @default(uuid())
-  code         String             @unique
-  nomeFantasia String
-  razaoSocial  String
-  cnpj         String             @unique
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id            String   @id @default(uuid())
+  code          String   @unique
+  cnpj          String   @unique
+  nomeFantasia  String
+  razaoSocial   String
+  contactEmail  String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   users        User[]
   responses    QuestionResponse[]
@@ -43,6 +44,7 @@ model User {
   companyId         String?
   company           Company?        @relation(fields: [companyId], references: [id])
   questionnaireToken String?        @unique
+  checklistCode     String?         @unique
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   passwordResets    PasswordReset[]
@@ -54,6 +56,14 @@ model User {
 
   @@index([companyId])
   @@index([questionnaireToken])
+}
+
+model RoleSetting {
+  role             UserRole @id
+  allowedMenus     String[] @default([])
+  actionPermissions Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model PasswordReset {
