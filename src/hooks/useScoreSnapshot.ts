@@ -24,7 +24,7 @@ function useHydrateCloud() {
       } catch (error) {
         console.warn("Falha ao sincronizar com nuvem local", error);
         if (!cancelled) {
-          hydrate({ responses: {}, syncHistory: [], actionPlans: [] });
+          hydrate({ responses: {}, syncHistory: [], actionPlans: [], conditionalRules: [] });
         }
       }
     };
