@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { ChartOptions, TooltipItem } from "chart.js";
 import { Doughnut, Bar } from "react-chartjs-2";
 import {
@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ClipboardList,
   LineChart,
+  Sparkles,
   Target,
   TrendingUp,
 } from "lucide-react";
@@ -77,30 +78,101 @@ export function DashboardPage() {
     loadInsights();
   }, [companyId]);
 
+  const renderRichText = (text: string) => {
+    const segments = text.split(/(\*\*[^*]+\*\*)/).filter(Boolean);
+    return segments.map((segment, index) => {
+      if (segment.startsWith("**") && segment.endsWith("**")) {
+        return (
+          <span key={index} className="font-semibold text-slate-800">
+            {segment.slice(2, -2)}
+          </span>
+        );
+      }
+      return <Fragment key={index}>{segment}</Fragment>;
+    });
+  };
+
   const suggestionParagraphs = useMemo(() => {
     if (!aiSuggestion) {
       return [];
     }
-    
+
     // Processar o texto para melhor formatação
-    const lines = aiSuggestion.split('\n').map(line => line.trim()).filter(Boolean);
-    const formatted: Array<{ type: 'title' | 'text' | 'list'; content: string }> = [];
-    
-    lines.forEach(line => {
+    const lines = aiSuggestion.split("\n").map((line) => line.trim()).filter(Boolean);
+    const formatted: Array<
+      {
+        type: "title" | "text" | "list";
+        content: string;
+        meta?: { emoji: string; accent: string; textColor: string; number?: number };
+        listPrefix?: string;
+      }
+    > = [];
+
+    let sectionCounter = 0;
+    let currentMeta: { emoji: string; accent: string; textColor: string; number?: number } | null = null;
+
+    const defaultMeta = { emoji: "📌", accent: "bg-slate-100 border-l-4 border-slate-400", textColor: "text-slate-700" };
+
+    const resolveMeta = (content: string): { emoji: string; accent: string; textColor: string } => {
+      if (/imediat|urgente|crítico|alta prioridade/i.test(content)) {
+        return { emoji: "🚨", accent: "bg-red-50 border-l-4 border-red-500", textColor: "text-red-800" };
+      }
+      if (/reforç|melhoria|ajuste|otimiz/i.test(content)) {
+        return { emoji: "⚙️", accent: "bg-amber-50 border-l-4 border-amber-500", textColor: "text-amber-800" };
+      }
+      if (/estratégic|iniciativa|visão|planejamento/i.test(content)) {
+        return { emoji: "🎯", accent: "bg-blue-50 border-l-4 border-blue-500", textColor: "text-blue-800" };
+      }
+      if (/positivo|sucesso|forte|excelente/i.test(content)) {
+        return { emoji: "✅", accent: "bg-emerald-50 border-l-4 border-emerald-500", textColor: "text-emerald-800" };
+      }
+      return { emoji: "📌", accent: "bg-slate-100 border-l-4 border-slate-400", textColor: "text-slate-700" };
+    };
+
+    const ensureMeta = (content: string) => {
+      const base = resolveMeta(content);
+      sectionCounter += 1;
+      currentMeta = { ...base, number: sectionCounter };
+      return currentMeta;
+    };
+
+    lines.forEach((line) => {
       // Detectar títulos (linhas com ###, ** ou que terminam com :)
-      if (line.startsWith('###') || line.startsWith('##') || line.startsWith('#')) {
-        formatted.push({ type: 'title', content: line.replace(/^#+\s*/, '') });
+      const isTitle = line.startsWith("###") || line.startsWith("##") || line.startsWith("#") || /:\s*$/.test(line);
+
+      if (isTitle) {
+        const content = line.replace(/^#+\s*/, "").replace(/:\s*$/, "");
+        sectionCounter += 1;
+        const metaBase = resolveMeta(content);
+        currentMeta = { ...metaBase, number: sectionCounter };
+        formatted.push({
+          type: "title",
+          content,
+          meta: currentMeta,
+        });
       }
       // Detectar itens de lista (começam com número, -, *, •, ou **)
       else if (/^(\d+[\.\)]\s|\-\s|\*\s|•\s|\*\*)/.test(line)) {
-        formatted.push({ type: 'list', content: line.replace(/^\*\*/, '').replace(/\*\*$/, '') });
+        const prefixMatch = line.match(/^(\d+[\.\)]|\-|\*|•)/);
+        const prefix = prefixMatch ? prefixMatch[1].replace(/[\-*•]/, "").trim() : "";
+        const content = line.replace(/^(\d+[\.\)]\s|\-\s|\*\s|•\s|\*\*)/, "").trim();
+        const metaSource = currentMeta ? { ...currentMeta } : { ...ensureMeta(content) };
+        const meta = metaSource ?? { ...defaultMeta };
+        formatted.push({
+          type: "list",
+          content: content.length ? content : line,
+          meta,
+          listPrefix: prefix || (meta.number != null ? `${meta.number}` : undefined),
+        });
       }
       // Texto normal
       else {
-        formatted.push({ type: 'text', content: line });
+        const metaSource = currentMeta ? { ...currentMeta } : { ...ensureMeta(line) };
+        const meta = metaSource ?? { ...defaultMeta };
+        formatted.push({ type: "text", content: line, meta });
       }
     });
-    
+
     return formatted;
   }, [aiSuggestion]);
 
@@ -487,58 +559,79 @@ export function DashboardPage() {
 
               <div className="space-y-4">
                 {suggestionParagraphs.map((item, index) => {
-                  if (item.type === 'title') {
-                    // Detectar tipo de seção por palavras-chave
-                    const isImmediate = /imediata|urgente|crítico|alta prioridade/i.test(item.content);
-                    const isMedium = /médio prazo|ajuste|melhoria/i.test(item.content);
-                    const isStrategic = /estratégic|longo prazo|iniciativa/i.test(item.content);
-                    
-                    let icon = <CheckCircle2 className="h-5 w-5" />;
-                    let bgColor = "bg-slate-100";
-                    let textColor = "text-slate-700";
-                    
-                    if (isImmediate) {
-                      icon = <AlertTriangle className="h-5 w-5" />;
-                      bgColor = "bg-red-50 border-l-4 border-red-500";
-                      textColor = "text-red-800";
-                    } else if (isMedium) {
-                      icon = <Activity className="h-5 w-5" />;
-                      bgColor = "bg-amber-50 border-l-4 border-amber-500";
-                      textColor = "text-amber-800";
-                    } else if (isStrategic) {
-                      icon = <TrendingUp className="h-5 w-5" />;
-                      bgColor = "bg-blue-50 border-l-4 border-blue-500";
-                      textColor = "text-blue-800";
-                    }
-                    
+                  if (item.type === "title" && item.meta) {
                     return (
-                      <div key={index} className={`rounded-xl ${bgColor} p-4`}>
-                        <div className="flex items-center gap-2">
-                          <div className={textColor}>{icon}</div>
-                          <h4 className={`font-semibold ${textColor}`}>
-                            {item.content}
-                          </h4>
+                      <div key={`title-${index}`} className={`rounded-2xl border ${item.meta.accent} p-5 shadow-sm`}>
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/70 text-xl">{item.meta.emoji}</div>
+                          <div className="flex-1">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                              {item.meta.number != null ? `Seção ${item.meta.number}` : "Seção"}
+                            </p>
+                            <h4 className={`text-lg font-semibold ${item.meta.textColor}`}>{item.content}</h4>
+                          </div>
                         </div>
                       </div>
                     );
                   }
-                  
-                  if (item.type === 'list') {
+
+                  if (item.type === "list") {
+                    const meta = item.meta ?? {
+                      emoji: "📌",
+                      accent: "border-slate-200",
+                      textColor: "text-slate-700",
+                      number: undefined,
+                    };
+                    const [rawTitle, ...restParts] = item.content.split(/\s+-\s+/);
+                    const description = restParts.join(" - ").trim();
+                    const badgeLabel = (() => {
+                      switch (meta.emoji) {
+                        case "🚨":
+                          return "Ação imediata";
+                        case "⚙️":
+                          return "Ajuste tático";
+                        case "🎯":
+                          return "Estratégico";
+                        case "✅":
+                          return "Ponto forte";
+                        default:
+                          return "Recomendação";
+                      }
+                    })();
+
                     return (
-                      <div key={index} className="ml-4 flex gap-3 rounded-lg bg-white p-3 shadow-sm">
-                        <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                          <span className="text-xs font-bold text-primary">•</span>
+                      <div
+                        key={`list-${index}`}
+                        className={`rounded-2xl border ${meta.accent} p-5 shadow-md transition duration-150 hover:shadow-lg`}
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/80 text-base font-semibold text-primary shadow-sm">
+                            {item.listPrefix && item.listPrefix.length > 0 ? item.listPrefix : meta.number ?? "•"}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                <span>{meta.emoji}</span>
+                                {badgeLabel}
+                              </span>
+                            </div>
+                            <div className={`mt-2 text-sm font-semibold ${meta.textColor}`}>
+                              {renderRichText(rawTitle.trim())}
+                            </div>
+                            {description ? (
+                              <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                                {renderRichText(description)}
+                              </p>
+                            ) : null}
+                          </div>
                         </div>
-                        <p className="flex-1 text-sm leading-relaxed text-slate-700">
-                          {item.content}
-                        </p>
                       </div>
                     );
                   }
-                  
+
                   return (
-                    <p key={index} className="rounded-lg bg-white p-4 text-sm leading-relaxed text-slate-600 shadow-sm">
-                      {item.content}
+                    <p key={`text-${index}`} className="rounded-xl bg-white p-4 text-sm leading-relaxed text-slate-600 shadow-sm">
+                      {renderRichText(item.content)}
                     </p>
                   );
                 })}
@@ -546,7 +639,7 @@ export function DashboardPage() {
             </div>
           ) : (
             <div className="mt-6 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-8 text-center">
-              <Target className="mx-auto h-12 w-12 text-slate-300" />
+              <Sparkles className="mx-auto h-12 w-12 text-slate-300" />
               <p className="mt-3 text-sm font-medium text-slate-500">
                 Nenhuma recomendação gerada ainda
               </p>
