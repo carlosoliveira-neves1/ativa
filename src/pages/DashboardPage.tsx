@@ -111,22 +111,26 @@ export function DashboardPage() {
     let sectionCounter = 0;
     let currentMeta: { emoji: string; accent: string; textColor: string; number?: number } | null = null;
 
-    const defaultMeta = { emoji: "📌", accent: "bg-slate-100 border-l-4 border-slate-400", textColor: "text-slate-700" };
+    const defaultMeta = {
+      emoji: "📌",
+      accent: "border border-slate-200 bg-gradient-to-br from-white to-slate-50",
+      textColor: "text-slate-700",
+    };
 
     const resolveMeta = (content: string): { emoji: string; accent: string; textColor: string } => {
       if (/imediat|urgente|crítico|alta prioridade/i.test(content)) {
-        return { emoji: "🚨", accent: "bg-red-50 border-l-4 border-red-500", textColor: "text-red-800" };
+        return { emoji: "🚨", accent: "border border-red-200 bg-red-50/70", textColor: "text-red-700" };
       }
       if (/reforç|melhoria|ajuste|otimiz/i.test(content)) {
-        return { emoji: "⚙️", accent: "bg-amber-50 border-l-4 border-amber-500", textColor: "text-amber-800" };
+        return { emoji: "⚙️", accent: "border border-amber-200 bg-amber-50/70", textColor: "text-amber-700" };
       }
       if (/estratégic|iniciativa|visão|planejamento/i.test(content)) {
-        return { emoji: "🎯", accent: "bg-blue-50 border-l-4 border-blue-500", textColor: "text-blue-800" };
+        return { emoji: "🎯", accent: "border border-blue-200 bg-blue-50/70", textColor: "text-blue-700" };
       }
       if (/positivo|sucesso|forte|excelente/i.test(content)) {
-        return { emoji: "✅", accent: "bg-emerald-50 border-l-4 border-emerald-500", textColor: "text-emerald-800" };
+        return { emoji: "✅", accent: "border border-emerald-200 bg-emerald-50/70", textColor: "text-emerald-700" };
       }
-      return { emoji: "📌", accent: "bg-slate-100 border-l-4 border-slate-400", textColor: "text-slate-700" };
+      return defaultMeta;
     };
 
     const ensureMeta = (content: string) => {
@@ -563,7 +567,7 @@ export function DashboardPage() {
                     return (
                       <div key={`title-${index}`} className={`rounded-2xl border ${item.meta.accent} p-5 shadow-sm`}>
                         <div className="flex items-start gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/70 text-xl">{item.meta.emoji}</div>
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-xl text-slate-600">{item.meta.emoji}</div>
                           <div className="flex-1">
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                               {item.meta.number != null ? `Seção ${item.meta.number}` : "Seção"}
@@ -602,15 +606,15 @@ export function DashboardPage() {
                     return (
                       <div
                         key={`list-${index}`}
-                        className={`rounded-2xl border ${meta.accent} p-5 shadow-md transition duration-150 hover:shadow-lg`}
+                        className={`rounded-2xl border ${meta.accent} p-5 shadow-sm transition duration-150 hover:shadow-md`}
                       >
                         <div className="flex items-start gap-4">
-                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/80 text-base font-semibold text-primary shadow-sm">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-sm font-semibold text-primary shadow-sm">
                             {item.listPrefix && item.listPrefix.length > 0 ? item.listPrefix : meta.number ?? "•"}
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                 <span>{meta.emoji}</span>
                                 {badgeLabel}
                               </span>
