@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import { randomUUID, randomBytes } from "node:crypto";
 import { PrismaClient, UserRole, Prisma } from "@prisma/client";
 import ExcelJS from "exceljs";
+import archiver from "archiver";
 import multer from "multer";
 import { generateCompanyInsights, isAiConfigured } from "./services/aiSuggestions.js";
 import { sendWelcomeEmail, sendPasswordResetEmail, sendQuestionnaireInvitationEmail, isEmailConfigured } from "./services/emailService.js";
@@ -1561,7 +1562,7 @@ app.get(
         return res.status(400).json({ message: "Informe companyId ou companyCode para acessar dados de uma empresa" });
       }
 
-      const [responseRows, syncRows, planRows] = await Promise.all([
+      const [responseRows, syncRows, planRows, ruleRows] = await Promise.all([
         prisma.questionResponse.findMany({
           where: { questionnaire: DEFAULT_QUESTIONNAIRE, companyId },
         }),
@@ -1570,6 +1571,10 @@ app.get(
           orderBy: { timestamp: "desc" },
         }),
         prisma.actionPlan.findMany({
+          where: { companyId },
+          orderBy: { updatedAt: "desc" },
+        }),
+        prisma.conditionalLogicRule.findMany({
           where: { companyId },
           orderBy: { updatedAt: "desc" },
         }),
@@ -1603,7 +1608,21 @@ app.get(
 
       const actionPlans = planRows.map(mapActionPlan);
 
-      res.json({ responses, syncHistory, actionPlans });
+      const conditionalRules = ruleRows.map((rule) => ({
+        id: rule.id,
+        sectionId: rule.sectionId,
+        targetQuestionId: rule.targetQuestionId,
+        action: rule.action,
+        actionPayload: rule.actionPayload ?? undefined,
+        conditions: Array.isArray(rule.conditions) ? rule.conditions : [],
+        enabled: rule.enabled,
+        name: rule.name ?? undefined,
+        description: rule.description ?? undefined,
+        createdAt: rule.createdAt.toISOString(),
+        updatedAt: rule.updatedAt.toISOString(),
+      }));
+
+      res.json({ responses, syncHistory, actionPlans, conditionalRules });
     } catch (error) {
       console.error("Failed to fetch state - Error details:", error);
       console.error("User:", req.user);
@@ -1706,7 +1725,7 @@ app.post(
   "/state",
   authenticate,
   withCompany(async (req, res, companyId) => {
-    const { responses = {}, syncHistory = [], actionPlans = [] } = req.body ?? {};
+    const { responses = {}, syncHistory = [], actionPlans = [], conditionalRules = [] } = req.body ?? {};
 
     try {
       const responseRows = [];
@@ -1756,6 +1775,21 @@ app.post(
         companyId,
       }));
 
+      const ruleRows = conditionalRules.map((rule) => ({
+        id: rule.id,
+        companyId,
+        sectionId: rule.sectionId,
+        targetQuestionId: rule.targetQuestionId,
+        action: rule.action,
+        actionPayload: rule.actionPayload ?? undefined,
+        conditions: rule.conditions ?? [],
+        enabled: rule.enabled !== false,
+        name: normalizeText(rule.name) ?? undefined,
+        description: normalizeText(rule.description) ?? undefined,
+        createdAt: toDate(rule.createdAt) ?? new Date(),
+        updatedAt: toDate(rule.updatedAt) ?? new Date(),
+      }));
+
       await prisma.$transaction(async (tx) => {
         await tx.questionResponse.deleteMany({
           where: {
@@ -1776,12 +1810,118 @@ app.post(
         if (planRows.length > 0) {
           await tx.actionPlan.createMany({ data: planRows });
         }
+
+        await tx.conditionalLogicRule.deleteMany({ where: { companyId } });
+        if (ruleRows.length > 0) {
+          await tx.conditionalLogicRule.createMany({ data: ruleRows });
+        }
       });
 
       res.status(204).end();
     } catch (error) {
       console.error("Failed to persist state", error);
       res.status(500).json({ message: "Failed to persist state" });
+    }
+  })
+);
+
+app.get(
+  "/reports/export/all.zip",
+  authenticate,
+  withCompany(async (req, res, companyId) => {
+    try {
+      const company = req.company ?? (await prisma.company.findUnique({ where: { id: companyId } }));
+      if (!company) {
+        return res.status(404).json({ message: "Empresa não encontrada" });
+      }
+
+      const [responses, syncHistory, actionPlans, insights, trainings, certificates] = await Promise.all([
+        prisma.questionResponse.findMany({
+          where: { companyId, questionnaire: DEFAULT_QUESTIONNAIRE },
+          orderBy: [{ sectionId: "asc" }, { questionId: "asc" }],
+        }),
+        prisma.syncEntry.findMany({ where: { companyId }, orderBy: { timestamp: "desc" } }),
+        prisma.actionPlan.findMany({ where: { companyId }, orderBy: { updatedAt: "desc" } }),
+        prisma.companyInsight.findMany({ where: { companyId }, orderBy: { createdAt: "desc" } }),
+        prisma.training.findMany({
+          where: { userProgress: { some: { user: { companyId } } } },
+          include: {
+            quizzes: {
+              include: {
+                attempts: {
+                  where: { user: { companyId } },
+                  orderBy: { completedAt: "desc" },
+                },
+              },
+            },
+            userProgress: {
+              where: { user: { companyId } },
+              include: { user: { select: { id: true, name: true, email: true } } },
+            },
+          },
+        }),
+        prisma.certificate.findMany({
+          where: { user: { companyId } },
+          include: {
+            training: { select: { title: true } },
+            user: { select: { name: true, email: true } },
+          },
+          orderBy: { issuedAt: "desc" },
+        }),
+      ]);
+
+      const archive = archiver("zip", { zlib: { level: 9 } });
+
+      archive.on("error", (error) => {
+        console.error("Failed to stream reports ZIP", error);
+        if (!res.headersSent) {
+          res.status(500).json({ message: "Erro ao gerar pacote de relatórios", details: error.message });
+        }
+      });
+
+      res.setHeader("Content-Type", "application/zip");
+      const filename = `ativa-relatorios-${company.code.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.zip`;
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+      archive.pipe(res);
+
+      archive.append(
+        JSON.stringify(
+          {
+            company: {
+              id: company.id,
+              code: company.code,
+              nomeFantasia: company.nomeFantasia,
+              razaoSocial: company.razaoSocial,
+              cnpj: company.cnpj,
+              generatedAt: new Date().toISOString(),
+            },
+            totals: {
+              responses: responses.length,
+              syncEntries: syncHistory.length,
+              actionPlans: actionPlans.length,
+              insights: insights.length,
+              trainings: trainings.length,
+              certificates: certificates.length,
+            },
+          },
+          null,
+          2
+        ),
+        { name: "summary.json" }
+      );
+
+      archive.append(JSON.stringify(responses, null, 2), { name: "questionnaire-responses.json" });
+      archive.append(JSON.stringify(syncHistory, null, 2), { name: "sync-history.json" });
+      archive.append(JSON.stringify(actionPlans, null, 2), { name: "action-plans.json" });
+      archive.append(JSON.stringify(insights, null, 2), { name: "ia-insights.json" });
+      archive.append(JSON.stringify(trainings, null, 2), { name: "trainings-progress.json" });
+      archive.append(JSON.stringify(certificates, null, 2), { name: "certificates.json" });
+
+      archive.finalize();
+    } catch (error) {
+      console.error("Failed to export reports ZIP", error);
+      res.status(500).json({ message: "Erro ao exportar relatórios", details: error.message });
     }
   })
 );

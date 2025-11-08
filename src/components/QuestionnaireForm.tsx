@@ -16,10 +16,11 @@ interface QuestionnaireFormProps {
 }
 
 export function QuestionnaireForm({ questionnaire }: QuestionnaireFormProps) {
-  const { responses, syncHistory, actionPlans } = useQuestionnaireStore((state) => ({
+  const { responses, syncHistory, actionPlans, conditionalRules } = useQuestionnaireStore((state) => ({
     responses: state.responses,
     syncHistory: state.syncHistory,
     actionPlans: state.actionPlans,
+    conditionalRules: state.conditionalRules,
   }));
 
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
@@ -29,7 +30,7 @@ export function QuestionnaireForm({ questionnaire }: QuestionnaireFormProps) {
     setSaveStatus("saving");
     setSaveError(null);
     try {
-      await persistCloudState({ responses, syncHistory, actionPlans });
+      await persistCloudState({ responses, syncHistory, actionPlans, conditionalRules });
       setSaveStatus("success");
       setTimeout(() => {
         setSaveStatus("idle");
@@ -87,6 +88,29 @@ export function QuestionnaireForm({ questionnaire }: QuestionnaireFormProps) {
           questions={section.questions}
         />
       ))}
+
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-elevated">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleManualSave}
+            disabled={saveStatus === "saving"}
+            className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:bg-primary/60"
+          >
+            {saveStatus === "saving" ? "Salvando..." : "Salvar alterações"}
+          </button>
+          {saveStatus === "success" && (
+            <span className="text-xs font-semibold uppercase tracking-wide text-emerald-600">
+              Dados sincronizados com a nuvem.
+            </span>
+          )}
+          {saveStatus === "error" && (
+            <span className="text-xs font-semibold uppercase tracking-wide text-red-600">
+              Falha ao salvar: {saveError}
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,40 @@
 import { create } from "zustand";
 
+export type ConditionalLogicOperator =
+  | "equals"
+  | "not_equals"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "between"
+  | "contains"
+  | "not_contains";
+
+export type ConditionalLogicAction = "show" | "hide" | "require" | "weight";
+
+export interface ConditionalLogicCondition {
+  sourceSectionId: string;
+  sourceQuestionId: string;
+  operator: ConditionalLogicOperator;
+  value: string | number | [number, number];
+  logicalOperator?: "AND" | "OR";
+}
+
+export interface ConditionalLogicRule {
+  id: string;
+  sectionId: string;
+  targetQuestionId: string;
+  action: ConditionalLogicAction;
+  actionPayload?: { weight?: number };
+  conditions: ConditionalLogicCondition[];
+  enabled: boolean;
+  name?: string;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface QuestionResponse {
   value?: string | number;
   attachmentName?: string;
@@ -39,6 +74,7 @@ export interface CloudState {
   responses: QuestionnaireResponses;
   syncHistory: SyncEntry[];
   actionPlans: ActionPlan[];
+  conditionalRules: ConditionalLogicRule[];
 }
 
 interface QuestionnaireState extends CloudState {
@@ -56,12 +92,16 @@ interface QuestionnaireState extends CloudState {
   setActionPlans: (plans: ActionPlan[]) => void;
   upsertActionPlan: (plan: ActionPlan) => void;
   removeActionPlan: (id: string) => void;
+  setConditionalRules: (rules: ConditionalLogicRule[]) => void;
+  upsertConditionalRule: (rule: ConditionalLogicRule) => void;
+  removeConditionalRule: (id: string) => void;
 }
 
 const defaultState: QuestionnaireState = {
   responses: {},
   syncHistory: [],
   actionPlans: [],
+  conditionalRules: [],
   isHydrated: false,
   updateResponse: () => undefined,
   clearResponse: () => undefined,
@@ -72,6 +112,9 @@ const defaultState: QuestionnaireState = {
   setActionPlans: () => undefined,
   upsertActionPlan: () => undefined,
   removeActionPlan: () => undefined,
+  setConditionalRules: () => undefined,
+  upsertConditionalRule: () => undefined,
+  removeConditionalRule: () => undefined,
 };
 
 export const useQuestionnaireStore = create<QuestionnaireState>((set) => ({
@@ -118,6 +161,7 @@ export const useQuestionnaireStore = create<QuestionnaireState>((set) => ({
       responses: {},
       syncHistory: [],
       actionPlans: state.actionPlans,
+      conditionalRules: state.conditionalRules,
       isHydrated: state.isHydrated,
     })),
   hydrate: (cloudState) =>
@@ -125,6 +169,7 @@ export const useQuestionnaireStore = create<QuestionnaireState>((set) => ({
       responses: cloudState.responses ?? {},
       syncHistory: cloudState.syncHistory ?? [],
       actionPlans: cloudState.actionPlans ?? [],
+      conditionalRules: cloudState.conditionalRules ?? [],
       isHydrated: true,
     })),
   setActionPlans: (plans) => set({ actionPlans: plans }),
@@ -143,6 +188,22 @@ export const useQuestionnaireStore = create<QuestionnaireState>((set) => ({
     set((state) => ({
       actionPlans: state.actionPlans.filter((plan) => plan.id !== id),
     })),
+  setConditionalRules: (rules) => set({ conditionalRules: rules }),
+  upsertConditionalRule: (rule) =>
+    set((state) => {
+      const index = state.conditionalRules.findIndex((item) => item.id === rule.id);
+      const conditionalRules = [...state.conditionalRules];
+      if (index >= 0) {
+        conditionalRules[index] = rule;
+      } else {
+        conditionalRules.unshift(rule);
+      }
+      return { conditionalRules };
+    }),
+  removeConditionalRule: (id) =>
+    set((state) => ({
+      conditionalRules: state.conditionalRules.filter((rule) => rule.id !== id),
+    })),
 }));
 
 export function resetQuestionnaireState() {
@@ -150,6 +211,7 @@ export function resetQuestionnaireState() {
     responses: {},
     syncHistory: [],
     actionPlans: [],
+    conditionalRules: [],
     isHydrated: false,
     updateResponse: useQuestionnaireStore.getState().updateResponse,
     clearResponse: useQuestionnaireStore.getState().clearResponse,
@@ -160,5 +222,8 @@ export function resetQuestionnaireState() {
     setActionPlans: useQuestionnaireStore.getState().setActionPlans,
     upsertActionPlan: useQuestionnaireStore.getState().upsertActionPlan,
     removeActionPlan: useQuestionnaireStore.getState().removeActionPlan,
+    setConditionalRules: useQuestionnaireStore.getState().setConditionalRules,
+    upsertConditionalRule: useQuestionnaireStore.getState().upsertConditionalRule,
+    removeConditionalRule: useQuestionnaireStore.getState().removeConditionalRule,
   });
 }

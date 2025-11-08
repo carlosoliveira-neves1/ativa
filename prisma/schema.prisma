@@ -134,6 +134,25 @@ model ActionPlan {
   @@index([severity])
 }
 
+model ConditionalLogicRule {
+  id               String   @id @default(uuid())
+  companyId        String
+  company          Company  @relation(fields: [companyId], references: [id])
+  sectionId        String
+  targetQuestionId String
+  action           String
+  actionPayload    Json?
+  conditions       Json
+  enabled          Boolean  @default(true)
+  name             String?
+  description      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([sectionId])
+}
+
 model CompanyInsight {
   id          String   @id @default(uuid())
   companyId   String

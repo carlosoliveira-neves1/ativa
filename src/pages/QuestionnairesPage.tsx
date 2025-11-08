@@ -1,14 +1,17 @@
+import { useState } from "react";
 import { ClipboardList, FilePlus2, Search, SlidersHorizontal } from "lucide-react";
 import { QuestionnaireForm } from "../components/QuestionnaireForm";
 import { questionnaire } from "../config/questionnaire";
 import { useQuestionnaireStore } from "../store/useQuestionnaireStore";
 import { useCloudSync } from "../hooks/useCloudSync";
+import { ConditionalLogicModal } from "../components/ConditionalLogicModal";
 
 export function QuestionnairesPage() {
   useCloudSync();
 
   const responses = useQuestionnaireStore((state) => state.responses);
   const activeCount = new Set(Object.keys(responses)).size;
+  const [showConditionalModal, setShowConditionalModal] = useState(false);
 
   return (
     <section className="space-y-6">
@@ -70,10 +73,14 @@ export function QuestionnairesPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 text-sm text-slate-500">
-            <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1">
+            <button
+              type="button"
+              onClick={() => setShowConditionalModal(true)}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 font-semibold transition hover:border-primary hover:text-primary"
+            >
               <SlidersHorizontal className="h-4 w-4" />
               Ajustar lógica condicional
-            </span>
+            </button>
           </div>
         </div>
 
@@ -81,6 +88,13 @@ export function QuestionnairesPage() {
           <QuestionnaireForm questionnaire={questionnaire} />
         </div>
       </div>
+
+      {showConditionalModal ? (
+        <ConditionalLogicModal
+          questionnaire={questionnaire}
+          onClose={() => setShowConditionalModal(false)}
+        />
+      ) : null}
     </section>
   );
 }

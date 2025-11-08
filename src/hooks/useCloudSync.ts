@@ -8,6 +8,7 @@ export function useCloudSync() {
   const responses = useQuestionnaireStore((state) => state.responses);
   const syncHistory = useQuestionnaireStore((state) => state.syncHistory);
   const actionPlans = useQuestionnaireStore((state) => state.actionPlans);
+  const conditionalRules = useQuestionnaireStore((state) => state.conditionalRules);
   const isHydrated = useQuestionnaireStore((state) => state.isHydrated);
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -16,7 +17,7 @@ export function useCloudSync() {
   useEffect(() => {
     if (!isHydrated) return;
 
-    const payload = JSON.stringify({ responses, syncHistory, actionPlans });
+    const payload = JSON.stringify({ responses, syncHistory, actionPlans, conditionalRules });
     if (payload === lastPayloadRef.current) return;
 
     if (timeoutRef.current) {
@@ -25,7 +26,7 @@ export function useCloudSync() {
 
     timeoutRef.current = setTimeout(async () => {
       try {
-        await persistCloudState({ responses, syncHistory, actionPlans });
+        await persistCloudState({ responses, syncHistory, actionPlans, conditionalRules });
         lastPayloadRef.current = payload;
       } catch (error) {
         console.warn("Falha ao salvar dados na nuvem local", error);
@@ -37,5 +38,5 @@ export function useCloudSync() {
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [responses, syncHistory, actionPlans, isHydrated]);
+  }, [responses, syncHistory, actionPlans, conditionalRules, isHydrated]);
 }

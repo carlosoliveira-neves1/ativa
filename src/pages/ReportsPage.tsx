@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   DownloadCloud,
   FileBarChart2,
@@ -7,6 +8,10 @@ import {
   MailQuestion,
 } from "lucide-react";
 import { useScoreSnapshot } from "../hooks/useScoreSnapshot";
+import { useAuthStore } from "../store/useAuthStore";
+import { useNotifications } from "../hooks/useNotifications";
+
+const API_BASE = import.meta.env.VITE_CLOUD_API_URL ?? "http://localhost:4000";
 
 const reportCards = [
   {
@@ -37,9 +42,77 @@ const reportCards = [
 
 export function ReportsPage() {
   const snapshot = useScoreSnapshot();
+  const { addNotification } = useNotifications();
+  const { token, selectedCompanyId, user } = useAuthStore((state) => ({
+    token: state.token,
+    selectedCompanyId: state.selectedCompanyId,
+    user: state.user,
+  }));
+  const [exportingZip, setExportingZip] = useState(false);
 
   const totalPendencias = snapshot.pendingQuestions.length;
   const totalPlanos = Math.max(totalPendencias, Math.round(snapshot.overallCompletion / 10));
+
+  const notify = (message: string, type: Parameters<typeof addNotification>[0]["type"]) => {
+    addNotification({ type, message });
+  };
+
+  const extractFilename = (disposition: string | null): string | null => {
+    if (!disposition) return null;
+    const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+    return filenameMatch ? filenameMatch[1] : null;
+  };
+
+  const handleExportZip = async () => {
+    if (!token) {
+      notify("Sessão expirada. Faça login novamente.", "error");
+      return;
+    }
+
+    if (user?.role === "ADMIN_GLOBAL" && !selectedCompanyId) {
+      notify("Selecione uma empresa para exportar os relatórios.", "error");
+      return;
+    }
+
+    setExportingZip(true);
+    try {
+      const headers = new Headers();
+      headers.set("Authorization", `Bearer ${token}`);
+      if (user?.role === "ADMIN_GLOBAL" && selectedCompanyId) {
+        headers.set("x-company-id", selectedCompanyId);
+      }
+
+      const response = await fetch(`${API_BASE}/reports/export/all.zip`, { headers });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        const message =
+          data && typeof data === "object" && "message" in data && typeof data.message === "string"
+            ? data.message
+            : "Erro ao exportar relatórios.";
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const disposition = response.headers.get("Content-Disposition");
+      const filename = extractFilename(disposition) ?? `relatorios-${new Date().toISOString().slice(0, 10)}.zip`;
+
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+
+      notify("Pacote de relatórios exportado com sucesso!", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao exportar relatórios.";
+      notify(message, "error");
+    } finally {
+      setExportingZip(false);
+    }
+  };
 
   return (
     <section className="space-y-6">
@@ -61,9 +134,14 @@ export function ReportsPage() {
               <Filter className="h-4 w-4" />
               Filtros avançados
             </button>
-            <button className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 font-semibold text-white shadow-elevated transition hover:bg-primary-dark">
+            <button
+              type="button"
+              onClick={handleExportZip}
+              disabled={exportingZip}
+              className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2 font-semibold text-white shadow-elevated transition hover:bg-primary-dark disabled:cursor-not-allowed disabled:bg-primary/60"
+            >
               <DownloadCloud className="h-4 w-4" />
-              Exportar todos (ZIP)
+              {exportingZip ? "Gerando pacote..." : "Exportar todos (ZIP)"}
             </button>
           </div>
         </div>
