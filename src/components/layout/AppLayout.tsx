@@ -137,9 +137,11 @@ export function AppLayout() {
       <aside className="hidden w-72 flex-col justify-between border-r border-slate-200 bg-white px-6 py-8 shadow-lg lg:flex">
         <div className="space-y-8">
           <div className="flex items-center gap-3">
-            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/10 text-2xl font-semibold text-accent">
-              +
-            </span>
+            <img 
+              src="/src/components/logo/better.png" 
+              alt="Better Engenharia" 
+              className="h-12 w-auto"
+            />
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.45em] text-primary">
                 Análise Psicossocial FAP
@@ -208,9 +210,11 @@ export function AppLayout() {
         <div className="space-y-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/10 text-2xl font-semibold text-accent">
-                +
-              </span>
+              <img 
+                src="/src/components/logo/better.png" 
+                alt="Better Engenharia" 
+                className="h-12 w-auto"
+              />
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.45em] text-primary">
                   Análise Psicossocial FAP
