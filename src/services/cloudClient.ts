@@ -1,5 +1,6 @@
 import type { ActionPlan, CloudState } from "../store/useQuestionnaireStore";
 import { useAuthStore } from "../store/useAuthStore";
+<<<<<<< HEAD
 import { 
   mockFetchCloudState, 
   mockPersistCloudState, 
@@ -9,6 +10,8 @@ import {
   mockRemoveActionPlan,
   isMockMode 
 } from "./mockClient";
+=======
+>>>>>>> c1be563cc4fa16c77632d79a7563441d5d834757
 
 const API_BASE = import.meta.env.VITE_CLOUD_API_URL ?? "http://localhost:4000";
 
@@ -42,19 +45,25 @@ async function authorizedFetch(input: RequestInfo | URL, init: RequestInit = {})
 }
 
 export async function fetchCloudState(): Promise<CloudState> {
+<<<<<<< HEAD
   if (isMockMode()) {
     return mockFetchCloudState();
   }
   
+=======
+>>>>>>> c1be563cc4fa16c77632d79a7563441d5d834757
   const response = await authorizedFetch(`${API_BASE}/state`);
   return handleResponse<CloudState>(response);
 }
 
 export async function persistCloudState(state: CloudState): Promise<void> {
+<<<<<<< HEAD
   if (isMockMode()) {
     return mockPersistCloudState(state);
   }
   
+=======
+>>>>>>> c1be563cc4fa16c77632d79a7563441d5d834757
   await authorizedFetch(`${API_BASE}/state`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -63,10 +72,13 @@ export async function persistCloudState(state: CloudState): Promise<void> {
 }
 
 export async function appendSyncEntry(entry: CloudState["syncHistory"][number]): Promise<void> {
+<<<<<<< HEAD
   if (isMockMode()) {
     return mockAppendSyncEntry(entry);
   }
   
+=======
+>>>>>>> c1be563cc4fa16c77632d79a7563441d5d834757
   await authorizedFetch(`${API_BASE}/sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -75,19 +87,25 @@ export async function appendSyncEntry(entry: CloudState["syncHistory"][number]):
 }
 
 export async function fetchActionPlans(): Promise<ActionPlan[]> {
+<<<<<<< HEAD
   if (isMockMode()) {
     return mockFetchActionPlans();
   }
   
+=======
+>>>>>>> c1be563cc4fa16c77632d79a7563441d5d834757
   const response = await authorizedFetch(`${API_BASE}/action-plans`);
   return handleResponse<ActionPlan[]>(response);
 }
 
 export async function persistActionPlan(plan: ActionPlan): Promise<ActionPlan> {
+<<<<<<< HEAD
   if (isMockMode()) {
     return mockPersistActionPlan(plan);
   }
   
+=======
+>>>>>>> c1be563cc4fa16c77632d79a7563441d5d834757
   const response = await authorizedFetch(`${API_BASE}/action-plans`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -97,10 +115,13 @@ export async function persistActionPlan(plan: ActionPlan): Promise<ActionPlan> {
 }
 
 export async function removeActionPlanApi(id: string): Promise<void> {
+<<<<<<< HEAD
   if (isMockMode()) {
     return mockRemoveActionPlan(id);
   }
   
+=======
+>>>>>>> c1be563cc4fa16c77632d79a7563441d5d834757
   const response = await authorizedFetch(`${API_BASE}/action-plans/${id}`, {
     method: "DELETE",
   });
