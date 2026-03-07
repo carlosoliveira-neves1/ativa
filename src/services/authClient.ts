@@ -1,8 +1,5 @@
 import { useAuthStore } from "../store/useAuthStore";
-<<<<<<< HEAD
 import { mockLogin, isMockMode } from "./mockClient";
-=======
->>>>>>> c1be563cc4fa16c77632d79a7563441d5d834757
 
 const API_BASE = import.meta.env.VITE_CLOUD_API_URL ?? "http://localhost:4000";
 
@@ -58,18 +55,15 @@ export interface SignupResponse extends LoginResponse {
 }
 
 export async function login(payload: LoginPayload): Promise<LoginResponse> {
-<<<<<<< HEAD
   if (isMockMode()) {
     const result = await mockLogin(payload.login, payload.password);
     return {
       token: result.token,
       expiresIn: "12h",
-      user: result.user
+      user: result.user,
     };
   }
   
-=======
->>>>>>> c1be563cc4fa16c77632d79a7563441d5d834757
   const response = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -79,13 +73,10 @@ export async function login(payload: LoginPayload): Promise<LoginResponse> {
 }
 
 export async function signup(payload: SignupPayload): Promise<SignupResponse> {
-<<<<<<< HEAD
   if (isMockMode()) {
     throw new Error("Cadastro não disponível em modo de demonstração. Use login: demo / demo123");
   }
   
-=======
->>>>>>> c1be563cc4fa16c77632d79a7563441d5d834757
   const response = await fetch(`${API_BASE}/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -99,7 +90,6 @@ export interface ProfileResponse {
 }
 
 export async function fetchProfile(): Promise<ProfileResponse> {
-<<<<<<< HEAD
   if (isMockMode()) {
     const token = useAuthStore.getState().token;
     if (!token) {
@@ -109,8 +99,6 @@ export async function fetchProfile(): Promise<ProfileResponse> {
     return { user: result.user };
   }
   
-=======
->>>>>>> c1be563cc4fa16c77632d79a7563441d5d834757
   const token = useAuthStore.getState().token;
   if (!token) {
     throw new Error("Token ausente");
@@ -132,7 +120,6 @@ export interface CompaniesResponse {
 }
 
 export async function listCompanies(search?: string): Promise<CompaniesResponse> {
-<<<<<<< HEAD
   if (isMockMode()) {
     return {
       companies: [
@@ -141,14 +128,12 @@ export async function listCompanies(search?: string): Promise<CompaniesResponse>
           code: "DEMO",
           nomeFantasia: "Empresa Demonstração LTDA",
           razaoSocial: "Empresa Demonstração LTDA",
-          cnpj: "00.000.000/0001-00"
-        }
-      ]
+          cnpj: "00.000.000/0001-00",
+        },
+      ],
     };
   }
   
-=======
->>>>>>> c1be563cc4fa16c77632d79a7563441d5d834757
   const token = useAuthStore.getState().token;
   if (!token) {
     throw new Error("Token ausente");
@@ -181,17 +166,15 @@ export interface InsightResponse {
 }
 
 export async function fetchInsights(companyId: string): Promise<InsightResponse> {
-<<<<<<< HEAD
   if (isMockMode()) {
     return {
-      suggestions: "Em modo de demonstração, os insights de IA não estão disponíveis. Configure uma API key da HuggingFace no backend para ativar esta funcionalidade.",
+      suggestions:
+        "Em modo de demonstração, os insights de IA não estão disponíveis. Configure uma API key da HuggingFace no backend para ativar esta funcionalidade.",
       focus: "demo",
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
   }
   
-=======
->>>>>>> c1be563cc4fa16c77632d79a7563441d5d834757
   const token = useAuthStore.getState().token;
   if (!token) {
     throw new Error("Token ausente");
@@ -213,17 +196,15 @@ export async function generateInsights(
   companyId: string,
   payload: InsightRequest = {}
 ): Promise<InsightResponse> {
-<<<<<<< HEAD
   if (isMockMode()) {
     return {
-      suggestions: "Em modo de demonstração, a geração de insights por IA não está disponível. Configure uma API key da HuggingFace no backend para ativar esta funcionalidade.",
+      suggestions:
+        "Em modo de demonstração, a geração de insights por IA não está disponível. Configure uma API key da HuggingFace no backend para ativar esta funcionalidade.",
       focus: payload.focus || "demo",
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
   }
   
-=======
->>>>>>> c1be563cc4fa16c77632d79a7563441d5d834757
   const token = useAuthStore.getState().token;
   if (!token) {
     throw new Error("Token ausente");
