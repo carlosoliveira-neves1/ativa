@@ -17,7 +17,7 @@
     }
   ],
   "env": {
-    "VITE_CLOUD_API_URL": "",
-    "VITE_MOCK_MODE": "true"
+    "VITE_CLOUD_API_URL": "https://ativa-nr1-api.onrender.com",
+    "VITE_MOCK_MODE": "false"
   }
 }
