@@ -1,0 +1,50 @@
+services:
+  # Backend API Service
+  - type: web
+    name: ativa-nr1-api
+    env: node
+    plan: starter
+    buildCommand: "npm install && npx prisma generate"
+    startCommand: "npm run server"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ativaapp
+          property: connectionString
+      - key: SHADOW_DATABASE_URL
+        fromDatabase:
+          name: ativaapp
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 12h
+      - key: AUTH_SALT_ROUNDS
+        value: 10
+      - key: AUTH_MIN_PASSWORD_LENGTH
+        value: 8
+      - key: SMTP_HOST
+        value: smtplw.com.br
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        value: cadastro@infratechnologia.com.br
+      - key: SMTP_PASS
+        value: Mudar@1234
+      - key: SMTP_FROM
+        value: NR NR- Compliance <cadastro@infratecnologia.com.br>
+      - key: HUGGINGFACE_API_KEY
+        sync: false
+      - key: HUGGINGFACE_MODEL
+        value: moonshotai/Kimi-K2-Instruct-0805
+      - key: HUGGINGFACE_MAX_NEW_TOKENS
+        value: 600
+      - key: AI_SUGGESTION_LIMIT
+        value: 5
+
+databases:
+  # PostgreSQL Database
+  - name: ativaapp
+    plan: starter

@@ -1,0 +1,253 @@
+// Prisma schema para o banco Postgres do Ativa NR-1
+// https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN_GLOBAL
+  COMPANY_ADMIN
+  USER
+}
+
+model Company {
+  id            String   @id @default(uuid())
+  code          String   @unique
+  cnpj          String   @unique
+  nomeFantasia  String
+  razaoSocial   String
+  contactEmail  String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  users        User[]
+  responses    QuestionResponse[]
+  syncEntries  SyncEntry[]
+  actionPlans  ActionPlan[]
+  insights     CompanyInsight[]
+  conditionalLogicRules ConditionalLogicRule[]
+}
+
+model User {
+  id                String          @id @default(uuid())
+  name              String
+  login             String          @unique
+  email             String          @unique
+  passwordHash      String
+  role              UserRole        @default(USER)
+  companyId         String?
+  company           Company?        @relation(fields: [companyId], references: [id])
+  questionnaireToken String?        @unique
+  checklistCode     String?         @unique
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  passwordResets    PasswordReset[]
+
+  // Relacionamentos EAD
+  quizAttempts      QuizAttempt[]
+  certificates      Certificate[]
+  trainingProgress  UserTrainingProgress[]
+
+  @@index([companyId])
+  @@index([questionnaireToken])
+}
+
+model RoleSetting {
+  role             UserRole @id
+  allowedMenus     String[] @default([])
+  actionPermissions Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model PasswordReset {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+model QuestionResponse {
+  id             String   @id @default(uuid())
+  sectionId      String
+  questionId     String
+  questionnaire  String   @default("")
+  valueString    String?
+  valueNumber    Float?
+  attachmentName String?
+  attachmentData String?
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([sectionId])
+  @@unique([companyId, questionnaire, sectionId, questionId], map: "responses_company_question_unique")
+}
+
+model SyncEntry {
+  id          String   @id @default(uuid())
+  timestamp   DateTime
+  conformity  Float
+  completion  Float
+  note        String?
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+}
+
+model ActionPlan {
+  id                 String   @id @default(uuid())
+  title              String
+  problemDescription String
+  normativeItem      String?
+  unitOrSector       String?
+  correctiveAction   String
+  severity           String
+  status             String
+  dueDate            DateTime?
+  responsible        String
+  notes              String?
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id])
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([status])
+  @@index([severity])
+}
+
+model ConditionalLogicRule {
+  id               String   @id @default(uuid())
+  companyId        String
+  company          Company  @relation(fields: [companyId], references: [id])
+  sectionId        String
+  targetQuestionId String
+  action           String
+  actionPayload    Json?
+  conditions       Json
+  enabled          Boolean  @default(true)
+  name             String?
+  description      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([sectionId])
+}
+
+model CompanyInsight {
+  id          String   @id @default(uuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  suggestions String
+  focus       String?
+  generatedBy String?
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([createdAt])
+}
+
+// Módulo EAD - Treinamentos
+model Training {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  videoUrl    String   // URL do YouTube ou vídeo embedado
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relacionamentos
+  quizzes     Quiz[]
+  certificates Certificate[]
+  userProgress UserTrainingProgress[]
+
+  @@index([isActive])
+}
+
+model Quiz {
+  id          String   @id @default(uuid())
+  trainingId  String
+  training    Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  title       String
+  questions   Json     // Array de perguntas e alternativas
+  passingScore Int     @default(70) // Nota mínima para aprovação
+  timeLimit   Int?     // Tempo limite em minutos
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  // Relacionamentos
+  attempts    QuizAttempt[]
+  certificates Certificate[]
+
+  @@index([trainingId])
+}
+
+model QuizAttempt {
+  id         String   @id @default(uuid())
+  quizId     String
+  quiz       Quiz     @relation(fields: [quizId], references: [id])
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers    Json     // Respostas do usuário
+  score      Int      // Pontuação obtida
+  passed     Boolean  // Se foi aprovado
+  completedAt DateTime @default(now())
+
+  @@index([quizId])
+  @@index([userId])
+}
+
+model Certificate {
+  id          String   @id @default(uuid())
+  trainingId  String
+  training    Training @relation(fields: [trainingId], references: [id])
+  quizId      String
+  quiz        Quiz     @relation(fields: [quizId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  certificateUrl String // URL do certificado gerado
+  issuedAt    DateTime @default(now())
+
+  @@unique([userId, trainingId])
+  @@index([trainingId])
+  @@index([userId])
+}
+
+model UserTrainingProgress {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trainingId  String
+  training    Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  status      String   @default("not_started") // not_started, in_progress, completed
+  videoWatched Boolean @default(false)
+  quizCompleted Boolean @default(false)
+  certificateGenerated Boolean @default(false)
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+
+  @@unique([userId, trainingId])
+  @@index([userId])
+  @@index([trainingId])
+}
