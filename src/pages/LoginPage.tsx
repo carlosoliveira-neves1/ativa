@@ -110,7 +110,7 @@ export function LoginPage() {
       <div className="w-full max-w-[420px] space-y-8 rounded-3xl border border-slate-200 bg-white/80 p-8 shadow-2xl backdrop-blur">
         <header className="space-y-2 text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.45em] text-primary">
-            NR-1 Compliance
+            Análise Psicossocial FAP
           </p>
           <h1 className="text-2xl font-semibold text-slate-900">Acessar plataforma</h1>
           <p className="text-sm text-slate-500">

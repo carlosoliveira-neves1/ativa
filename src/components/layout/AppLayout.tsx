@@ -142,9 +142,9 @@ export function AppLayout() {
             </span>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.45em] text-primary">
-                NR-1 Compliance
+                Análise Psicossocial FAP
               </p>
-              <h1 className="text-xl font-semibold text-slate-900">Ativa</h1>
+              <h1 className="text-xl font-semibold text-slate-900">Formulário NR1</h1>
             </div>
           </div>
 
@@ -213,9 +213,9 @@ export function AppLayout() {
               </span>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.45em] text-primary">
-                  NR-1 Compliance
+                  Análise Psicossocial FAP
                 </p>
-                <h1 className="text-xl font-semibold text-slate-900">Ativa</h1>
+                <h1 className="text-xl font-semibold text-slate-900">Formulário NR1</h1>
               </div>
             </div>
             <button
@@ -290,9 +290,9 @@ export function AppLayout() {
               </button>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.45em] text-primary">
-                  NR-1 Compliance
+                  Análise Psicossocial FAP
                 </p>
-                <h1 className="text-lg font-semibold text-slate-900">Ativa</h1>
+                <h1 className="text-lg font-semibold text-slate-900">Formulário NR1</h1>
               </div>
             </div>
             <div className="flex flex-1 flex-wrap items-center justify-end gap-3 lg:gap-4">

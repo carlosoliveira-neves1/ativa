@@ -64,8 +64,8 @@ export async function sendWelcomeEmail({ to, name, login, companyCode, companyNa
           <!-- Header -->
           <tr>
             <td style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 40px 30px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600;">NR-1 Compliance</h1>
-              <p style="margin: 10px 0 0 0; color: #e0e7ff; font-size: 14px; letter-spacing: 2px;">ATIVA</p>
+              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600;">Formulário de Análise Psicossocial FAP</h1>
+              <p style="margin: 10px 0 0 0; color: #e0e7ff; font-size: 14px; letter-spacing: 2px;">NR1</p>
             </td>
           </tr>
           
@@ -82,8 +82,8 @@ export async function sendWelcomeEmail({ to, name, login, companyCode, companyNa
               
               <p style="margin: 0 0 20px 0; color: #475569; font-size: 16px; line-height: 1.6;">
                 ${isNewCompany 
-                  ? 'Sua empresa foi cadastrada com sucesso na plataforma NR-1 Compliance. Abaixo estão suas credenciais de acesso:'
-                  : 'Seu usuário foi criado com sucesso na plataforma NR-1 Compliance. Abaixo estão suas credenciais de acesso:'
+                  ? 'Sua empresa foi cadastrada com sucesso na plataforma Formulário de Análise Psicossocial FAP. Abaixo estão suas credenciais de acesso:'
+                  : 'Seu usuário foi criado com sucesso na plataforma Formulário de Análise Psicossocial FAP. Abaixo estão suas credenciais de acesso:'
                 }
               </p>
               
